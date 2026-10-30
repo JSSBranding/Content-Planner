@@ -1,0 +1,10 @@
+{
+  "name": "jouw-content-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Jouw Content Studio — contentvoorbereiding en overdracht voor Jouw Social Studio",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
