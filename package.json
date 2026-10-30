@@ -5,6 +5,17 @@
   "type": "module",
   "description": "Jouw Content Studio — contentvoorbereiding en overdracht voor Jouw Social Studio",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "multer": "^2.5.0"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

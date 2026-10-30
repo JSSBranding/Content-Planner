@@ -69,3 +69,21 @@ test('content van andere klanten telt niet als conflict', () => {
   const existing = [{ clientId: 'c2', date: '2026-11-11', channel: 'instagram' }];
   assert.equal(findConflicts(approve(reviewed(), manager), existing).length, 0);
 });
+
+test('conceptteksten per kanaal gaan mee naar de kalendercellen', () => {
+  const withTexts = items.map((it, i) => (i === 0 ? { ...it, texts: { linkedin: 'Zakelijk', instagram: 'Kort' } } : it));
+  const plan = approve(submitForReview(createPlan({ clientId: 'c1', items: withTexts })), manager);
+  const cells = addToCalendar(plan, manager, []).newCalendarItems;
+  const byChannel = Object.fromEntries(cells.filter((c) => c.date === '2026-11-11').map((c) => [c.channel, c]));
+  assert.equal(byChannel.linkedin.body, 'Zakelijk');
+  assert.equal(byChannel.linkedin.status, 'tekst_gereed');
+  assert.equal(byChannel.facebook.body, '');
+  assert.equal(byChannel.facebook.status, 'beeld_gereed_tekst_ontbreekt');
+  assert.equal(cells.find((c) => c.date === '2026-11-14').status, 'placeholder_actie_nodig');
+});
+
+test('twee onderwerpen op dezelfde datum en hetzelfde kanaal kunnen niet worden goedgekeurd', () => {
+  const dup = [...items, { date: '2026-11-11', topic: 'Tweede onderwerp', channels: ['instagram'] }];
+  const plan = submitForReview(createPlan({ clientId: 'c1', items: dup }));
+  assert.throws(() => approve(plan, manager), (e) => e.duplicates?.includes('2026-11-11|instagram'));
+});

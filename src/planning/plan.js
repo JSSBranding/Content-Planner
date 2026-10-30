@@ -69,8 +69,30 @@ export function regenerate(plan, items) {
   return clearApproval({ ...plan, items, status: PLAN_STATUS.CONCEPT, generation: plan.generation + 1 });
 }
 
+// Twee onderwerpen op dezelfde datum en hetzelfde kanaal passen niet in één kalendercel.
+export function findDuplicateCells(plan) {
+  const seen = new Set();
+  const duplicates = [];
+  for (const cell of toCells(plan)) {
+    const key = cellKey(cell.date, cell.channel);
+    if (seen.has(key)) duplicates.push(key);
+    seen.add(key);
+  }
+  return duplicates;
+}
+
+function assertNoDuplicates(plan) {
+  const duplicates = findDuplicateCells(plan);
+  if (duplicates.length) {
+    const err = new PlanError(`Meerdere onderwerpen op dezelfde datum en hetzelfde kanaal: ${duplicates.join(', ')}.`);
+    err.duplicates = duplicates;
+    throw err;
+  }
+}
+
 export function approve(plan, user, now = new Date()) {
   assertApprover(user);
+  assertNoDuplicates(plan);
   if (![PLAN_STATUS.IN_CONTROLE, PLAN_STATUS.AANPASSEN].includes(plan.status)) {
     throw new PlanError('Alleen een planning in controle of in aanpassing kan worden goedgekeurd.');
   }
@@ -83,7 +105,14 @@ export function approve(plan, user, now = new Date()) {
   };
 }
 
-const cellKey = (date, channel) => `${date}|${channel}`;
+export const cellKey = (date, channel) => `${date}|${channel}`;
+
+// Beginstatus van een nieuwe kalendercel, afgeleid van wat er al is.
+export function initialStatus({ body, media }) {
+  if (body && body.trim()) return 'tekst_gereed';
+  if (media && media.length > 0) return 'beeld_gereed_tekst_ontbreekt';
+  return 'placeholder_actie_nodig';
+}
 
 // Zet planregels om naar kanaalcellen (één per datum × kanaal).
 export function toCells(plan) {
@@ -96,6 +125,7 @@ export function toCells(plan) {
       pillar: item.pillar ?? null,
       clientInputId: item.clientInputId ?? null,
       media: item.media ?? [],
+      body: item.texts?.[channel] ?? '',
     })),
   );
 }
@@ -119,6 +149,7 @@ export function addToCalendar(plan, user, existingCalendarItems, resolutions = {
   if (plan.status !== PLAN_STATUS.GOEDGEKEURD || plan.approvedGeneration !== plan.generation) {
     throw new PlanError('Planning is niet (meer) goedgekeurd door een manager.');
   }
+  assertNoDuplicates(plan);
   const conflicts = findConflicts(plan, existingCalendarItems);
   const unresolved = conflicts.filter(
     ({ cell }) => !['skip', 'replace'].includes(resolutions[cellKey(cell.date, cell.channel)]),
@@ -139,11 +170,12 @@ export function addToCalendar(plan, user, existingCalendarItems, resolutions = {
       date: cell.date,
       time: cell.time,
       channel: cell.channel,
-      body: null, // teksten per kanaal volgen in stap 4
-      sourceInfo: cell.topic,
+      topic: cell.topic,
+      pillar: cell.pillar,
+      clientInputId: cell.clientInputId,
+      body: cell.body, // leeg tot AI de tekst per kanaal schrijft (stap 4)
       media: cell.media,
-      status: 'placeholder_actie_nodig',
-      isDraft: true,
+      status: initialStatus(cell),
     })),
     replaced: conflicts
       .filter(({ cell }) => resolutions[cellKey(cell.date, cell.channel)] === 'replace')
