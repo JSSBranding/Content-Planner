@@ -16,6 +16,10 @@ function getClient() {
   client ??= new Anthropic();
   return client;
 }
+// Alleen voor tests: vervangt de Claude-client door een nabootsing.
+export function setClientForTests(fake) {
+  client = fake;
+}
 
 // ---------- Privacy ----------
 

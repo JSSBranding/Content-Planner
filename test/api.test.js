@@ -174,3 +174,13 @@ test('Excel-export en -import zonder ongemerkt overschrijven', async () => {
   assert.equal(applied.body.replaced, 0);
   assert.equal(applied.body.skipped, preview.body.rows.length);
 });
+
+test('beveiliging: mediabestanden in sandbox, inlogpogingen begrensd', async () => {
+  const list = (await admin('GET', `/api/clients/${clientId}/media`)).body;
+  const res = await fetch(base + list[0].url, { method: 'HEAD' });
+  assert.equal(res.status, 401, 'niet zonder inloggen');
+  const anon = agent();
+  let last;
+  for (let i = 0; i < 11; i++) last = await anon('POST', '/api/login', { email: 'beheer@jss.nl', password: 'fout' });
+  assert.equal(last.status, 429);
+});

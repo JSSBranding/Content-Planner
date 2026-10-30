@@ -47,6 +47,7 @@ export function createApp(db, { secureCookies = false } = {}) {
   app.use((_req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'same-origin');
+    res.set('Content-Security-Policy', "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     next();
   });
 
@@ -236,10 +237,20 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.status(201).json({ ok: true });
   });
 
+  // Na 10 mislukte pogingen per e-mailadres en IP-adres volgt een pauze van 15 minuten.
+  const failedLogins = new Map();
   api.post('/login', (req, res) => {
     const { email, password } = req.body ?? {};
+    const key = `${str(email).trim().toLowerCase()}|${req.ip}`;
+    const now = Date.now();
+    const attempts = (failedLogins.get(key) ?? []).filter((t) => now - t < 15 * 60_000);
+    if (attempts.length >= 10) fail(429, 'Te veel mislukte pogingen. Probeer het over een kwartier opnieuw.');
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(str(email).trim());
-    if (!user || !verifyPassword(str(password), user.password_hash)) fail(401, 'E-mailadres of wachtwoord klopt niet.');
+    if (!user || !verifyPassword(str(password), user.password_hash)) {
+      failedLogins.set(key, [...attempts, now]);
+      fail(401, 'E-mailadres of wachtwoord klopt niet.');
+    }
+    failedLogins.delete(key);
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
     setSessionCookie(res, createSession(db, user.id), secureCookies);
     res.json({ ok: true });
@@ -419,14 +430,19 @@ export function createApp(db, { secureCookies = false } = {}) {
   const mediaOr404 = (id) => db.prepare('SELECT * FROM media_assets WHERE id = ?').get(id) ?? fail(404, 'Bestand niet gevonden.');
   const mediaPath = (m) => path.join(UPLOAD_DIR, m.client_id, m.storage_name);
 
+  // Klantbestanden worden nooit als actieve inhoud uitgevoerd (bijv. een SVG met script).
+  const sandboxed = (res) => res.set('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
+
   api.get('/media/:id/file', (req, res) => {
     const m = mediaOr404(req.params.id);
+    sandboxed(res);
     res.set('Cache-Control', 'private, max-age=86400');
     res.type(m.mime_type).sendFile(mediaPath(m));
   });
 
   api.get('/media/:id/download', (req, res) => {
     const m = mediaOr404(req.params.id);
+    sandboxed(res);
     res.download(mediaPath(m), m.filename);
   });
 
