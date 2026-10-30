@@ -1,0 +1,15 @@
+/* JSS 2.0-huisstijl — kleuren uit JSS20_Logo_beeldmerk.ai. Zie docs/huisstijl.md. */
+:root {
+  --jss-turkoois: #00ffeb;        /* logo en beeldmerk */
+  --jss-turkoois-zacht: #50fee7;  /* aanhalingstekens-icoon */
+  --jss-donkergrijs: #3c3c3b;     /* logotekst, standaard tekstkleur */
+  --jss-grijs: #4a4a49;           /* cirkel beeldmerk */
+  --jss-wit: #ffffff;
+
+  --kleur-tekst: var(--jss-donkergrijs);
+  --kleur-achtergrond: var(--jss-wit);
+  --kleur-accent: var(--jss-turkoois);
+  /* Turkoois heeft te weinig contrast met wit voor tekst (±1,3:1).
+     Gebruik op turkoois altijd donkergrijze tekst (±8,7:1). */
+  --kleur-tekst-op-accent: var(--jss-donkergrijs);
+}
