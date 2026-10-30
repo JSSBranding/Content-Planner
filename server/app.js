@@ -329,7 +329,15 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.status(201).json(getClient(db, id));
   });
 
-  api.get('/clients/:id', (req, res) => res.json(clientOr404(req.params.id)));
+  api.get('/clients/:id', (req, res) => {
+    const client = clientOr404(req.params.id);
+    const count = (sql) => db.prepare(sql).get(client.id).n;
+    res.json({
+      ...client,
+      open_inputs: count('SELECT COUNT(*) AS n FROM client_inputs WHERE client_id = ? AND processed = 0'),
+      open_plans: count("SELECT COUNT(*) AS n FROM content_plans WHERE client_id = ? AND status IN ('concept','in_controle','aanpassen','goedgekeurd')"),
+    });
+  });
 
   api.patch('/clients/:id', requirePermission('manageClients'), (req, res) => {
     const f = clientFields(req.body ?? {}, clientOr404(req.params.id));

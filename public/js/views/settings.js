@@ -1,4 +1,4 @@
-import { h, field, toast, showError } from '../ui.js';
+import { h, icon, field, toast, showError, page } from '../ui.js';
 import { api, meta, can } from '../api.js';
 import { clientHeader } from './clients.js';
 
@@ -14,6 +14,7 @@ export function clientForm({ client, onSaved, onCancel }) {
   const archived = h('input', { type: 'checkbox', checked: Boolean(c.archived), disabled: readOnly });
   const channelBoxes = meta.channels.map((ch) => h('label', {},
     h('input', { type: 'checkbox', value: ch.key, checked: c.channels.includes(ch.key), disabled: readOnly }), ch.label));
+  const pillarHelp = 'Eén pijler per regel, bijv. Vakmanschap, Team, Aanbod.';
 
   const form = h('form', {
     onsubmit: async (e) => {
@@ -30,35 +31,38 @@ export function clientForm({ client, onSaved, onCancel }) {
       };
       try {
         const saved = client ? await api.patch(`/clients/${client.id}`, body) : await api.post('/clients', body);
-        toast('Klant opgeslagen.');
+        toast(client ? 'Klantprofiel opgeslagen' : 'Klant toegevoegd');
         onSaved?.(saved);
       } catch (err) {
         showError(err);
       }
     },
   },
-  h('div', { class: 'twee-kolommen' },
-    h('div', {},
+  client ? h('div', { class: 'twee-kolommen' },
+    h('div', { class: 'paneelblok' },
+      h('h2', {}, 'Basis'), h('p', { class: 'zacht' }, 'Wat er wanneer en waar gepost wordt.'),
       field('Klantnaam', name),
-      field('Strategie', strategy, 'Doelen, doelgroep, propositie. De AI gebruikt dit voor elk voorstel.'),
-      field('Tone of voice', tone),
-      field('Contentpijlers', pillars, 'Eén pijler per regel.')),
-    h('div', {},
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
-      field('Afgesproken publicatiefrequentie (posts per week)', ppw),
-      field('AI-klantgeheugen', memory, 'Vaste afspraken, voorkeuren en lessen ("geen prijzen noemen", "altijd je-vorm", "klant wil minder LinkedIn"). Wordt bij elk AI-verzoek meegegeven.'),
-      client ? h('div', { class: 'veld' }, h('label', { class: 'vinkje' }, archived, 'Klant archiveren')) : null)),
+      field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),
+      field('Contentpijlers', pillars, pillarHelp),
+      h('label', { class: 'vinkje' }, archived, 'Klant archiveren')),
+    h('div', { class: 'paneelblok' },
+      h('h2', {}, 'Strategie en AI-geheugen'), h('p', { class: 'zacht' }, 'Gaat mee bij elk AI-voorstel en elke tekst. Telefoonnummers en e-mailadressen worden eerst weggelaten.'),
+      field('Strategie', strategy, 'Doelen, doelgroep en wat de klant wil uitstralen.'),
+      field('Tone of voice', tone),
+      field('AI-klantgeheugen', memory, 'Vaste afspraken en lessen, bijv. "geen prijzen noemen", "altijd je-vorm", "liever minder LinkedIn".')))
+    : [
+      field('Klantnaam', name),
+      h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
+      h('div', { class: 'rij' }, field('Posts per week', ppw), h('div', { class: 'veld', style: { flex: '3 1 260px' } }, h('label', {}, 'Contentpijlers'), pillars, h('div', { class: 'hulp' }, pillarHelp))),
+    ],
   readOnly ? h('p', { class: 'zacht' }, 'Alleen social media managers en beheerders kunnen het klantprofiel wijzigen.') :
-    h('div', { class: 'knoppen' }, h('button', { class: 'knop primair', type: 'submit' }, 'Opslaan'),
+    h('div', { class: 'knoppen', style: { marginTop: '16px' } }, h('button', { class: 'knop primair', type: 'submit' }, client ? 'Opslaan' : 'Klant toevoegen'),
       onCancel ? h('button', { class: 'knop', type: 'button', onclick: onCancel }, 'Annuleren') : null));
   return form;
 }
 
 export async function settingsView({ clientId, tab, rerender }) {
-  const { client, header } = await clientHeader(clientId, tab);
-  return [
-    ...header,
-    h('div', { class: 'melding info' }, 'De AI krijgt bij elk voorstel deze strategie, pijlers, kanalen, frequentie en het AI-klantgeheugen mee. Telefoonnummers en e-mailadressen worden vooraf weggelaten.'),
-    clientForm({ client, onSaved: () => rerender() }),
-  ];
+  const { client, head } = await clientHeader(clientId, tab);
+  return page(head(), clientForm({ client, onSaved: () => rerender() }));
 }

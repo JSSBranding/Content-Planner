@@ -1,4 +1,7 @@
 // Kleine hulpfuncties voor de interface. Alle tekst gaat via textContent, nooit via innerHTML.
+import { icon } from './icons.js';
+
+export { icon };
 
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -38,11 +41,11 @@ function append(el, children) {
 }
 
 export function toast(message, type = '') {
-  const el = h('div', { class: `toast ${type}` }, message);
+  const el = h('div', { class: `toast ${type}` }, icon(type === 'fout' ? 'sluit' : 'vink', { size: 16 }), message);
   const host = document.getElementById('toasts');
   host.append(el);
   while (host.children.length > 3) host.firstChild.remove();
-  setTimeout(() => el.remove(), type === 'fout' ? 7000 : 3500);
+  setTimeout(() => el.remove(), type === 'fout' ? 7000 : 3200);
 }
 
 export function showError(err) {
@@ -68,7 +71,7 @@ export function modal({ title, body, buttons = [], width }) {
     }, b.label)));
     const overlay = h('div', { class: 'modaal', onclick: (e) => e.target === overlay && close(null) },
       h('div', { class: 'venster', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, style: width ? { '--breedte': width } : null },
-        h('header', {}, h('h2', {}, title), h('button', { class: 'knop kaal klein', style: { marginLeft: 'auto' }, type: 'button', 'aria-label': 'Sluiten', onclick: () => close(null) }, '✕')),
+        h('header', {}, h('h2', {}, title), h('button', { class: 'knop kaal icoonknop klein', type: 'button', 'aria-label': 'Sluiten', onclick: () => close(null) }, icon('sluit'))),
         h('div', { class: 'inhoud' }, body),
         buttons.length ? footer : null));
     document.addEventListener('keydown', onKey);
@@ -87,13 +90,60 @@ export function confirmDialog(title, message, { confirmLabel = 'Doorgaan', dange
 
 // Blokkeert de interface tijdens lange acties (zoals AI-verzoeken) met een duidelijke melding.
 export async function busy(message, fn) {
-  const el = h('div', { class: 'bezig' }, h('div', { class: 'kaart' }, h('span', { class: 'laden' }), message));
+  const el = h('div', { class: 'bezig', role: 'status' },
+    h('div', { class: 'kaartje' }, h('img', { src: '/assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), h('div', {}, message)));
   document.body.append(el);
   try {
     return await fn();
   } finally {
     el.remove();
   }
+}
+
+// Klein keuzemenu bij een knop. items: [{ label, icon?, kleur?: style, checked?, action }].
+export function openMenu(anchor, items) {
+  document.querySelector('.menu')?.remove();
+  const close = () => {
+    menu.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', onKey, true);
+    anchor.focus?.();
+  };
+  const outside = (e) => !menu.contains(e.target) && close();
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    const buttons = [...menu.querySelectorAll('button')];
+    const i = buttons.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); buttons[(i + 1) % buttons.length].focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length].focus(); }
+  };
+  const menu = h('div', { class: 'menu', role: 'menu' }, items.map((it) => h('button', {
+    type: 'button', role: 'menuitem',
+    onclick: (e) => { e.stopPropagation(); close(); it.action(); },
+  }, it.kleur ? h('span', { class: 'kleurbol', style: it.kleur }) : it.icon ? icon(it.icon, { size: 16 }) : null,
+  it.label, it.checked ? h('span', { class: 'vink' }, icon('vink', { size: 16 })) : null)));
+  document.body.append(menu);
+  const r = anchor.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  menu.style.top = `${Math.min(r.bottom + 6, innerHeight - m.height - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8))}px`;
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('keydown', onKey, true);
+  (menu.querySelector('.vink')?.closest('button') ?? menu.querySelector('button'))?.focus();
+}
+
+// Vaste paginaopbouw: een kop (met titel, acties en eventueel tabs) en het werkvlak eronder.
+export function pageHead({ title, sub, actions, tabs }) {
+  return h('header', { class: `paginakop ${tabs ? '' : 'zonder-tabs'}` },
+    h('div', { class: 'titelrij' }, h('div', {}, h('h1', {}, title), sub ? h('div', { class: 'sub' }, sub) : null),
+      actions ? h('div', { class: 'acties knoppen' }, actions) : null),
+    tabs ?? null);
+}
+export const page = (head, ...content) => [head, h('div', { class: 'inhoud-vlak' }, content)];
+
+export function initials(name) {
+  const words = String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? '') + (words.length > 1 ? words.at(-1)[0] : words[0]?.[1] ?? '')).toUpperCase();
 }
 
 const dateFmt = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -175,6 +225,18 @@ export function field(labelText, control, help) {
   const id = control.id || `v${Math.random().toString(36).slice(2, 9)}`;
   control.id = id;
   return h('div', { class: 'veld' }, h('label', { for: id }, labelText), control, help ? h('div', { class: 'hulp' }, help) : null);
+}
+
+// Nette bestandskiezer in plaats van de standaardknop van de browser.
+export function fileButton(input, label, emptyText = 'Nog niets gekozen') {
+  input.hidden = true;
+  const chosen = h('span', { class: 'gekozen' }, emptyText);
+  input.addEventListener('change', () => {
+    const files = [...input.files];
+    chosen.textContent = files.length ? (files.length === 1 ? files[0].name : `${files.length} bestanden gekozen`) : emptyText;
+  });
+  input.form?.addEventListener('reset', () => { chosen.textContent = emptyText; });
+  return h('div', { class: 'bestandkeuze' }, h('label', { class: 'knop klein' }, icon('upload', { size: 15 }), label, input), chosen);
 }
 
 export function emptyState(message, action) {

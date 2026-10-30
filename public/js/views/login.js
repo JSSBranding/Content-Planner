@@ -3,16 +3,14 @@ import { api } from '../api.js';
 
 function shell(title, intro, form) {
   return h('div', { class: 'inlog' },
-    h('div', { class: 'kaart' },
-      h('img', { class: 'logo', src: '/assets/brand/svg/logo-turkoois.svg', alt: 'Jouw Social Studio' }),
-      h('h1', { style: { textAlign: 'center', fontSize: '20px' } }, title),
-      intro ? h('p', { class: 'zacht', style: { textAlign: 'center' } }, intro) : null,
-      form));
+    h('div', { class: 'merkvlak' }, h('img', { src: '/assets/brand/svg/logo-wit-op-turkoois.svg', alt: 'Jouw Social Studio' })),
+    h('div', { class: 'formvlak' },
+      h('div', {}, h('h1', {}, title), h('p', { class: 'zacht' }, intro), form)));
 }
 
 function form(fields, submitLabel, onSubmit) {
-  const error = h('div', { class: 'melding fout', hidden: true });
-  const button = h('button', { class: 'knop primair', type: 'submit', style: { width: '100%', justifyContent: 'center' } }, submitLabel);
+  const error = h('div', { class: 'melding fout', hidden: true, role: 'alert' });
+  const button = h('button', { class: 'knop primair', type: 'submit' }, submitLabel);
   const el = h('form', {
     onsubmit: async (e) => {
       e.preventDefault();
@@ -32,7 +30,7 @@ function form(fields, submitLabel, onSubmit) {
 }
 
 export function loginView(onLoggedIn) {
-  return shell('Jouw Content Studio', null, form([
+  return shell('Inloggen', 'Jouw Content Studio, de contentplanner van Jouw Social Studio.', form([
     field('E-mailadres', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'username' })),
     field('Wachtwoord', h('input', { type: 'password', name: 'password', required: true, autocomplete: 'current-password' })),
   ], 'Inloggen', async (data) => {
@@ -42,7 +40,7 @@ export function loginView(onLoggedIn) {
 }
 
 export function setupView(onLoggedIn) {
-  return shell('Eerste beheerder aanmaken', 'Er zijn nog geen gebruikers. Maak het account van de beheerder aan.', form([
+  return shell('Account van de beheerder', 'Er zijn nog geen gebruikers. Maak eerst het beheerdersaccount aan; daarna voeg je het team toe.', form([
     field('Naam', h('input', { type: 'text', name: 'name', required: true })),
     field('E-mailadres', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'username' })),
     field('Wachtwoord', h('input', { type: 'password', name: 'password', required: true, minLength: 10, autocomplete: 'new-password' }), 'Minimaal 10 tekens.'),

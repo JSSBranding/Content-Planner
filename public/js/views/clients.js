@@ -1,51 +1,77 @@
-import { h, fill, emptyState } from '../ui.js';
-import { api, can, channelLabel, statusStyle } from '../api.js';
+import { h, icon, emptyState, pageHead, page, initials } from '../ui.js';
+import { api, can, meta, channelLabel } from '../api.js';
 import { clientForm } from './settings.js';
 
-export async function clientsView({ rerender }) {
+export async function clientsView({ query }) {
   const clients = await api.get('/clients');
   const active = clients.filter((c) => !c.archived);
   const archived = clients.filter((c) => c.archived);
+  const newOpen = query.get('nieuw') === '1' && can('manageClients');
 
-  const newButton = can('manageClients')
-    ? h('button', { class: 'knop primair', onclick: () => openNew() }, '+ Nieuwe klant')
+  const newButton = can('manageClients') && !newOpen
+    ? h('a', { class: 'knop primair', href: '#/?nieuw=1' }, icon('plus', { size: 16 }), 'Nieuwe klant')
     : null;
-  const formHost = h('div');
 
-  function openNew() {
-    fill(formHost, h('div', { class: 'kaart sectie' }, h('h2', {}, 'Nieuwe klant'),
-      clientForm({ client: null, onSaved: (c) => { location.hash = `#/klant/${c.id}/instellingen`; }, onCancel: () => fill(formHost) })));
-  }
+  // Per klant: wat vraagt nu aandacht?
+  const todos = (c) => [
+    c.open_plans ? `${c.open_plans} conceptplanning${c.open_plans > 1 ? 'en' : ''} wacht${c.open_plans > 1 ? 'en' : ''} op beoordeling` : null,
+    c.open_inputs ? `${c.open_inputs} nieuwe klantinput` : null,
+    c.action_needed ? `${c.action_needed} post${c.action_needed > 1 ? 's' : ''} met actie nodig` : null,
+  ].filter(Boolean);
 
-  const card = (c) => h('a', { class: 'kaart', href: `#/klant/${c.id}/kalender`, style: { textDecoration: 'none', display: 'block' } },
-    h('h2', {}, c.name),
-    h('p', { class: 'zacht' }, c.channels.map(channelLabel).join(' · ') || 'Nog geen kanalen ingesteld', ` — ${c.posts_per_week} posts per week`),
-    h('div', { class: 'knoppen' },
-      c.open_inputs ? h('span', { class: 'chip' }, `${c.open_inputs} nieuwe input`) : null,
-      c.open_plans ? h('span', { class: 'chip' }, `${c.open_plans} conceptplanning${c.open_plans > 1 ? 'en' : ''} open`) : null,
-      c.action_needed ? h('span', { class: 'status', style: statusStyle('placeholder_actie_nodig') }, `${c.action_needed} × actie nodig`) : null));
+  const card = (c) => {
+    const list = todos(c);
+    return h('a', { class: 'klantkaart', href: `#/klant/${c.id}/kalender` },
+      h('div', { class: 'kop' }, h('span', { class: 'initialen' }, initials(c.name)),
+        h('div', {}, h('h2', {}, c.name),
+          h('div', { class: 'zacht' }, `${c.posts_per_week} posts per week op ${c.channels.map(channelLabel).join(', ') || 'nog geen kanalen'}`))),
+      h('div', { class: 'todo' }, list.length
+        ? list.map((t) => h('div', {}, h('span', { class: 'stip' }), t))
+        : h('div', { class: 'rustig' }, 'Niets openstaand')));
+  };
 
-  return [
-    h('div', { class: 'klantkop' }, h('h1', {}, 'Klanten'), h('div', { style: { marginLeft: 'auto' } }, newButton)),
-    formHost,
-    active.length ? h('div', { class: 'kaarten sectie' }, active.map(card)) : emptyState('Er zijn nog geen klanten.', newButton?.cloneNode(true)),
-    archived.length ? h('details', {}, h('summary', { class: 'zacht' }, `Gearchiveerde klanten (${archived.length})`),
-      h('div', { class: 'kaarten', style: { marginTop: '12px' } }, archived.map(card))) : null,
-  ];
+  const form = newOpen ? h('div', { class: 'paneelblok sectie' }, h('h2', {}, 'Nieuwe klant'),
+    h('p', { class: 'zacht' }, 'Begin met naam, kanalen en frequentie. Strategie en AI-geheugen kun je later aanvullen.'),
+    clientForm({ client: null, onSaved: (c) => { location.hash = `#/klant/${c.id}/kalender`; }, onCancel: () => { location.hash = '#/'; } })) : null;
+
+  const totalPlans = active.reduce((n, c) => n + c.open_plans, 0);
+  return page(
+    pageHead({
+      title: `Goedendag, ${meta.user.name.split(' ')[0]}`,
+      sub: totalPlans ? `${totalPlans} conceptplanning${totalPlans > 1 ? 'en' : ''} wacht${totalPlans > 1 ? 'en' : ''} op beoordeling.` : 'Alle conceptplanningen zijn beoordeeld.',
+      actions: newButton,
+    }),
+    form,
+    active.length ? h('div', { class: 'klantkaarten sectie' }, active.map(card))
+      : !newOpen ? emptyState('Nog geen klanten. Voeg je eerste klant toe om te beginnen.', newButton) : null,
+    archived.length ? h('details', { class: 'uitklap' }, h('summary', { class: 'zacht' }, `Gearchiveerde klanten (${archived.length})`),
+      h('div', { class: 'klantkaarten' }, archived.map(card))) : null,
+  );
 }
 
-// Kop en tabbladen boven elk klantscherm.
+const TABS = [
+  ['kalender', 'Contentkalender', 'kalender'],
+  ['planning', 'Conceptplanning', 'planning'],
+  ['input', 'Klantinput', 'inbox'],
+  ['media', 'Beeld', 'beeld'],
+  ['shoots', 'Contentshoots', 'camera'],
+  ['instellingen', 'Klantprofiel', 'profiel'],
+];
+
+// Kop met klantnaam, acties en tabbladen boven elk klantscherm.
 export async function clientHeader(clientId, tab) {
   const client = await api.get(`/clients/${clientId}`);
-  const t = (key, label) => h('a', { href: `#/klant/${clientId}/${key}`, class: tab === key ? 'actief' : '' }, label);
+  const counts = { planning: client.open_plans, input: client.open_inputs };
+  const tabs = h('nav', { class: 'tabs', 'aria-label': 'Onderdelen' }, TABS.map(([key, label, ic]) =>
+    h('a', { href: `#/klant/${clientId}/${key}`, class: tab === key ? 'actief' : '', 'aria-current': tab === key ? 'page' : null },
+      icon(ic, { size: 16 }), label, counts[key] ? h('span', { class: 'teller' }, counts[key]) : null)));
   return {
     client,
-    header: [
-      h('div', { class: 'klantkop' },
-        h('div', {}, h('a', { href: '#/', class: 'zacht', style: { textDecoration: 'none' } }, '← Klanten'), h('h1', {}, client.name))),
-      h('nav', { class: 'tabs' },
-        t('kalender', 'Contentkalender'), t('planning', 'Conceptplanning'), t('input', 'Klantinput'),
-        t('media', 'Mediabibliotheek'), t('shoots', 'Contentshoots'), t('instellingen', 'Klantprofiel & AI-geheugen')),
-    ],
+    head: (actions) => pageHead({
+      title: client.name,
+      sub: `${client.posts_per_week} posts per week op ${client.channels.map(channelLabel).join(', ') || 'nog geen kanalen'}`,
+      actions,
+      tabs,
+    }),
   };
 }
