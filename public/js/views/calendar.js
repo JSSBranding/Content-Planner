@@ -2,7 +2,7 @@ import {
   h, fill, field, toast, showError, modal, confirmDialog, busy, copyText, downloadUrl, mediaThumb, mediaPreview,
   fmtDate, fmtLongDate, fmtMonth, fmtDateTime, isoDate, addDays, monthBounds, shiftMonth,
 } from '../ui.js';
-import { api, meta, can, channelLabel, statusLabel, statusColor } from '../api.js';
+import { api, meta, can, channelLabel, statusLabel, statusStyle } from '../api.js';
 import { clientHeader } from './clients.js';
 import { pickMedia } from './media.js';
 
@@ -35,7 +35,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       can('editContent') ? h('button', { class: 'knop', onclick: importExcel }, 'Excel-import') : null));
 
   const legend = h('div', { class: 'legenda sectie', style: { marginTop: '10px' } },
-    meta.calendarStatuses.map((s) => h('span', { class: 'status', style: { '--kleur': statusColor(s.key) } },
+    meta.calendarStatuses.map((s) => h('span', { class: 'status', style: statusStyle(s.key), title: s.colorName },
       `${s.label} (${cal.items.filter((i) => i.status === s.key).length})`)));
 
   // ---------- Raster ----------
@@ -59,7 +59,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const hidden = statusFilter && item.status !== statusFilter;
     const shown = item.media.slice(0, 3);
     return h('button', {
-      class: 'cel gevuld', style: { '--kleur': statusColor(item.status), opacity: hidden ? '0.25' : null },
+      class: 'cel gevuld', style: { ...statusStyle(item.status), opacity: hidden ? '0.25' : null },
       'aria-label': `${label}: ${statusLabel(item.status)}`, onclick: () => openEditor(item),
     },
     h('div', { class: 'celkop' }, h('span', {}, item.suggested_time ?? ''), h('span', {}, statusLabel(item.status))),
@@ -91,9 +91,12 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       meta.channels.map((c) => h('option', { value: c.key }, c.label)));
     const status = h('select', {
       class: 'statusselect', value: item.status, disabled: !statusEditable,
-      onchange: () => { status.style.setProperty('--kleur', statusColor(status.value)); statusTouched = true; markDirty(); },
+      onchange: () => { paintStatus(); statusTouched = true; markDirty(); },
     }, meta.calendarStatuses.map((s) => h('option', { value: s.key }, s.label)));
-    status.style.setProperty('--kleur', statusColor(item.status));
+    function paintStatus() {
+      for (const [prop, v] of Object.entries(statusStyle(status.value))) status.style.setProperty(prop, v);
+    }
+    paintStatus();
     const assignee = h('select', { value: item.assignee_id ?? '', disabled: !contentEditable, onchange: markDirty },
       h('option', { value: '' }, '— Niemand —'), users.map((u) => h('option', { value: u.id }, u.name)));
     const topic = h('input', { type: 'text', value: item.topic, disabled: !contentEditable, oninput: markDirty });

@@ -59,7 +59,7 @@ De tests doorlopen de hele workflow via de API (zonder AI-sleutel), de goedkeuri
 | **Klantinput-inbox** met **WhatsApp-import** (chatexport .txt) en bijbehorende foto's/video's | Klantinput |
 | **Mediabibliotheek**: upload, thumbnails, videopreview, zoeken/filteren, downloaden, "eerder gebruikt", privacy per bestand | Mediabibliotheek |
 | **Conceptplanning** met vijf statussen en verplichte goedkeuring door een manager | Conceptplanning |
-| **Contentkalender**: raster datum × kanaal, zeven kleurstatussen, meerdere beelden per post, interne opmerkingen, verantwoordelijke | Contentkalender |
+| **Contentkalender**: raster datum × kanaal, zeven kleurstatussen (kleuren uit de JSS-legenda, `server/constants.js`), meerdere beelden per post, interne opmerkingen, verantwoordelijke | Contentkalender |
 | **Versiegeschiedenis** per kalendercel, met terugzetten | Zijpaneel van een cel |
 | **Excel-export en -import** (import vervangt alleen wat je expliciet aanvinkt) | Contentkalender |
 | **Contentshoot-voorstellen** | Contentshoots |
@@ -86,11 +86,11 @@ De tests doorlopen de hele workflow via de API (zonder AI-sleutel), de goedkeuri
 
 ## Bekende beperkingen
 
-- **Kleuren van de zeven statussen**: de oorspronkelijke kleuren waren niet bekend. Ze staan op één plek (`public/styles.css`, `--status-*`, en `server/excel.js`) en zijn eenvoudig aan te passen.
 - **Thumbnails** zijn het originele bestand, door de browser verkleind. Bij zeer grote foto's is server-side verkleinen (bijv. met `sharp`) een logische vervolgstap.
 - **Alles downloaden** downloadt de bestanden één voor één, niet als zip.
 - **AI-klantgeheugen** wordt handmatig bijgehouden; de AI vult het niet zelf aan.
 - **Wachtwoord vergeten**: een beheerder stelt een nieuw wachtwoord in; er is geen e-mailherstel.
+- **Beeldkeuze door de AI** gebeurt op bestandsnaam, beschrijving en tags; de AI bekijkt de beelden zelf (nog) niet.
 - Het AI-pad is getest met een nagebootste Claude-client; test na het instellen van een sleutel één planning van begin tot eind.
 
 ## Mappen

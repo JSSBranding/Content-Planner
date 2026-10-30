@@ -15,14 +15,6 @@
   --radius: 8px;
   --schaduw: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 16px rgb(0 0 0 / 6%);
 
-  /* De zeven kleurstatussen: bewust niet turkoois, zodat ze nooit met het merkaccent verward worden. */
-  --status-tekst_gereed: #ffe58a;
-  --status-beeld_gereed_tekst_ontbreekt: #ffc98a;
-  --status-gereed_voor_inplannen: #a9d1ff;
-  --status-volledig_ingepland: #9edb98;
-  --status-advertising_gereed: #e2ccff;
-  --status-advertising_ingepland: #b894f5;
-  --status-placeholder_actie_nodig: #ffb3b3;
 }
 
 * { box-sizing: border-box; }
@@ -144,9 +136,9 @@ main.breed { max-width: none; }
 
 /* ---------- Status ---------- */
 
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: var(--gewicht-medium); padding: 1px 8px; border-radius: 4px; }
-.status::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--kleur); border: 1px solid rgb(0 0 0 / 15%); }
-.statusselect { border-left: 10px solid var(--kleur) !important; }
+/* Kleurstatussen: kleuren komen uit server/constants.js (via statusStyle in api.js). */
+.status { display: inline-flex; align-items: center; font-size: 12px; padding: 2px 10px; border-radius: 4px; background: var(--kleur); color: var(--kleur-tekst); font-weight: var(--kleur-gewicht); border: 1px solid rgb(0 0 0 / 18%); }
+.statusselect { background: var(--kleur) !important; color: var(--kleur-tekst) !important; font-weight: var(--kleur-gewicht); }
 .legenda { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
 
 /* ---------- Contentkalender (Excel-achtig raster) ---------- */
@@ -169,9 +161,10 @@ table.raster { border-collapse: separate; border-spacing: 0; width: 100%; table-
 .cel { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; height: 100%; min-height: 64px; padding: 6px 8px; border: 0; background: transparent; text-align: left; cursor: pointer; font-size: 12.5px; }
 .cel.leeg-cel { color: transparent; }
 .cel.leeg-cel:hover { color: var(--tekst-zacht); background: var(--vlak-2); }
-.cel.gevuld { background: color-mix(in srgb, var(--kleur) 55%, white); border-left: 5px solid var(--kleur); }
-.cel.gevuld:hover { background: color-mix(in srgb, var(--kleur) 80%, white); }
-.cel .celkop { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; font-weight: var(--gewicht-medium); margin-bottom: 2px; }
+.cel.gevuld { background: var(--kleur); color: var(--kleur-tekst); font-weight: var(--kleur-gewicht); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 10%); }
+.cel.gevuld:hover { box-shadow: inset 0 0 0 2px var(--jss-donkergrijs); }
+.cel.gevuld .celtekst.ontbreekt { color: inherit; opacity: .75; }
+.cel .celkop { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; font-weight: var(--gewicht-medium); margin-bottom: 2px; opacity: .85; }
 .cel .celtekst { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
 .cel .celtekst.ontbreekt { font-style: italic; color: var(--tekst-zacht); }
 .cel .duimpjes { display: flex; gap: 3px; margin-top: 4px; }

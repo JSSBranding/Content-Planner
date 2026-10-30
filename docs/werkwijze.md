@@ -59,13 +59,17 @@ Handmatig aangemaakte posts mogen direct als concept in de kalender worden opges
 
 ## 3. Kleurstatussen (ongewijzigd, zeven)
 
-1. Tekst gereed
-2. Beeld gereed, tekst ontbreekt
-3. Gereed voor inplannen
-4. Volledig ingepland *(handmatig, na inplannen buiten de app)*
-5. Advertising gereed
-6. Advertising ingepland *(handmatig, na inplannen buiten de app)*
-7. Placeholder / actie nodig
+Volgorde en kleuren volgens de bestaande JSS-legenda (vastgelegd in `server/constants.js`):
+
+| Kleur | Status | Opmerking |
+|---|---|---|
+| Wit + vetgedrukt | Tekst gereed | |
+| Lichtgroen | Volledig ingepland | handmatig, na inplannen buiten de app |
+| Lichtoranje | Placeholder / actie nodig | |
+| Lichtblauw | Gereed voor inplannen | |
+| Lichtgeel | Beeld gereed, tekst ontbreekt | |
+| Felpaars | Advertising gereed | |
+| Lichtpaars | Advertising ingepland | handmatig, na inplannen buiten de app |
 
 Er is **geen** automatische publicatie en **geen** publicatiekoppeling.
 

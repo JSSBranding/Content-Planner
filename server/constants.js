@@ -11,15 +11,16 @@ export const CHANNELS = [
 ];
 export const CHANNEL_KEYS = CHANNELS.map((c) => c.key);
 
-// De zeven bestaande kleurstatussen. Kleuren staan in public/styles.css (--status-*).
+// De zeven bestaande kleurstatussen, in de volgorde en kleuren van de JSS-legenda.
+// Dit is de enige plek met de kleuren: kalender, legenda en Excel-export lezen ze hier.
 export const CALENDAR_STATUSES = [
-  { key: 'tekst_gereed', label: 'Tekst gereed' },
-  { key: 'beeld_gereed_tekst_ontbreekt', label: 'Beeld gereed, tekst ontbreekt' },
-  { key: 'gereed_voor_inplannen', label: 'Gereed voor inplannen' },
-  { key: 'volledig_ingepland', label: 'Volledig ingepland' },
-  { key: 'advertising_gereed', label: 'Advertising gereed' },
-  { key: 'advertising_ingepland', label: 'Advertising ingepland' },
-  { key: 'placeholder_actie_nodig', label: 'Placeholder / actie nodig' },
+  { key: 'tekst_gereed', label: 'Tekst gereed', color: '#ffffff', text: '#3c3c3b', bold: true, colorName: 'Wit + vetgedrukt' },
+  { key: 'volledig_ingepland', label: 'Volledig ingepland', color: '#cef3d6', text: '#3c3c3b', bold: false, colorName: 'Lichtgroen' },
+  { key: 'placeholder_actie_nodig', label: 'Placeholder / actie nodig', color: '#f9dab7', text: '#3c3c3b', bold: false, colorName: 'Lichtoranje' },
+  { key: 'gereed_voor_inplannen', label: 'Gereed voor inplannen', color: '#d1e5fd', text: '#3c3c3b', bold: false, colorName: 'Lichtblauw' },
+  { key: 'beeld_gereed_tekst_ontbreekt', label: 'Beeld gereed, tekst ontbreekt', color: '#fdf2d0', text: '#3c3c3b', bold: false, colorName: 'Lichtgeel' },
+  { key: 'advertising_gereed', label: 'Advertising gereed', color: '#7960dd', text: '#ffffff', bold: false, colorName: 'Felpaars' },
+  { key: 'advertising_ingepland', label: 'Advertising ingepland', color: '#e0dafc', text: '#3c3c3b', bold: false, colorName: 'Lichtpaars' },
 ];
 export const CALENDAR_STATUS_KEYS = CALENDAR_STATUSES.map((s) => s.key);
 

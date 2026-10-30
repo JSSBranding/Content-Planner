@@ -1,5 +1,5 @@
 import { h, fill, emptyState } from '../ui.js';
-import { api, can, channelLabel } from '../api.js';
+import { api, can, channelLabel, statusStyle } from '../api.js';
 import { clientForm } from './settings.js';
 
 export async function clientsView({ rerender }) {
@@ -23,7 +23,7 @@ export async function clientsView({ rerender }) {
     h('div', { class: 'knoppen' },
       c.open_inputs ? h('span', { class: 'chip' }, `${c.open_inputs} nieuwe input`) : null,
       c.open_plans ? h('span', { class: 'chip' }, `${c.open_plans} conceptplanning${c.open_plans > 1 ? 'en' : ''} open`) : null,
-      c.action_needed ? h('span', { class: 'status', style: { '--kleur': 'var(--status-placeholder_actie_nodig)' } }, `${c.action_needed} × actie nodig`) : null));
+      c.action_needed ? h('span', { class: 'status', style: statusStyle('placeholder_actie_nodig') }, `${c.action_needed} × actie nodig`) : null));
 
   return [
     h('div', { class: 'klantkop' }, h('h1', {}, 'Klanten'), h('div', { style: { marginLeft: 'auto' } }, newButton)),

@@ -43,5 +43,9 @@ export async function loadMeta() {
 export const can = (permission) => Boolean(meta.user && meta.permissions[permission]?.includes(meta.user.role));
 export const channelLabel = (key) => meta.channels.find((c) => c.key === key)?.label ?? key;
 export const statusLabel = (key) => meta.calendarStatuses.find((s) => s.key === key)?.label ?? key;
-export const statusColor = (key) => `var(--status-${key})`;
+// Kleur, tekstkleur en vetgedrukt van een kleurstatus, als CSS-variabelen voor style.
+export function statusStyle(key) {
+  const s = meta.calendarStatuses.find((x) => x.key === key);
+  return s ? { '--kleur': s.color, '--kleur-tekst': s.text, '--kleur-gewicht': s.bold ? '700' : '400' } : {};
+}
 export const roleLabel = (key) => meta.roles.find((r) => r.key === key)?.label ?? key;

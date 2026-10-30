@@ -2,14 +2,14 @@
 import ExcelJS from 'exceljs';
 import { CHANNELS, CALENDAR_STATUSES } from './constants.js';
 
-const STATUS_FILL = {
-  tekst_gereed: 'FFFFE58A',
-  beeld_gereed_tekst_ontbreekt: 'FFFFC98A',
-  gereed_voor_inplannen: 'FFA9D1FF',
-  volledig_ingepland: 'FF9EDB98',
-  advertising_gereed: 'FFE2CCFF',
-  advertising_ingepland: 'FFB894F5',
-  placeholder_actie_nodig: 'FFFFB3B3',
+const argb = (hex) => `FF${hex.slice(1).toUpperCase()}`;
+const statusFill = (key) => {
+  const s = CALENDAR_STATUSES.find((x) => x.key === key);
+  return { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(s.color) } };
+};
+const statusFont = (key) => {
+  const s = CALENDAR_STATUSES.find((x) => x.key === key);
+  return { color: { argb: argb(s.text) }, bold: s.bold };
 };
 
 const COLUMNS = [
@@ -49,14 +49,20 @@ export async function exportCalendar({ client, items, from, to }) {
       notes: it.internal_notes,
     });
     row.alignment = { vertical: 'top', wrapText: true };
-    row.getCell('status').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: STATUS_FILL[it.status] } };
+    // Zoals in de bestaande JSS-kalender: de hele rij krijgt de statuskleur.
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.fill = statusFill(it.status);
+      cell.font = statusFont(it.status);
+    });
   }
   ws.autoFilter = { from: 'A1', to: 'J1' };
 
   const legend = wb.addWorksheet('Statussen');
-  legend.columns = [{ header: 'Status', key: 's', width: 32 }];
+  legend.columns = [{ header: 'Kleur', key: 'c', width: 20 }, { header: 'Status', key: 's', width: 32 }];
+  legend.getRow(1).font = { bold: true };
   for (const s of CALENDAR_STATUSES) {
-    legend.addRow({ s: s.label }).getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: STATUS_FILL[s.key] } };
+    const row = legend.addRow({ c: s.colorName, s: s.label });
+    row.eachCell((cell) => { cell.fill = statusFill(s.key); cell.font = statusFont(s.key); });
   }
   const info = wb.addWorksheet('Info');
   info.addRows([['Klant', client.name], ['Periode', `${from} t/m ${to}`], ['Geëxporteerd', new Date().toISOString().slice(0, 16).replace('T', ' ')]]);
