@@ -1,3 +1,5 @@
+@import './fonts.css';
+
 /* JSS 2.0-huisstijl — kleuren uit JSS20_Logo_beeldmerk.ai. Zie docs/huisstijl.md. */
 :root {
   --jss-turkoois: #00ffeb;        /* logo en beeldmerk */
@@ -5,6 +7,13 @@
   --jss-donkergrijs: #3c3c3b;     /* logotekst, standaard tekstkleur */
   --jss-grijs: #4a4a49;           /* cirkel beeldmerk */
   --jss-wit: #ffffff;
+
+  --font-basis: 'Poppins', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --gewicht-normaal: 400;
+  --gewicht-medium: 500;
+  --gewicht-halfvet: 600;
+  --gewicht-vet: 700;
+  --gewicht-extravet: 800;
 
   --kleur-tekst: var(--jss-donkergrijs);
   --kleur-achtergrond: var(--jss-wit);

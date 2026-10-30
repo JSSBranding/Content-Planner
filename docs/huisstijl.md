@@ -27,6 +27,23 @@ Losse iconen in `assets/icons/` nemen de tekstkleur over (`fill="currentColor"`)
 (pijlen, kruisen, harten, patronen). Tekengebied 3 en 4 zijn leeg en zijn niet geëxporteerd.
 Iconen uit een vel die in de app gebruikt worden, worden eerst als los SVG-bestand uitgesneden.
 
+## Lettertype: Poppins
+
+Poppins (SIL Open Font License 1.1) is **zelf gehost** in `assets/fonts/poppins/` en wordt geladen via
+`src/styles/fonts.css` (geïmporteerd door `tokens.css`). Er wordt bewust geen Google Fonts-CDN
+gebruikt: zo gaan er geen IP-adressen van medewerkers naar Google (privacy/AVG).
+
+| Token | Gewicht | Gebruik |
+|---|---|---|
+| `--gewicht-normaal` | 400 | lopende tekst, kalendercellen, posttekst |
+| `--gewicht-medium` | 500 | labels, kolomkoppen, knoppen |
+| `--gewicht-halfvet` | 600 | tussenkoppen, klantnaam |
+| `--gewicht-vet` | 700 | paginatitels |
+| `--gewicht-extravet` | 800 | grote koppen, spaarzaam |
+
+Alleen het Latijnse subset is opgenomen (bevat ë, é, ï enz.). Cursief alleen in 400.
+Fallback: `system-ui`, daarna Arial.
+
 ## Kleuren
 
 | Token | Hex | Herkomst |
