@@ -3,6 +3,9 @@
 // zodat de workflow altijd te testen is. AI-uitkomsten zijn altijd voorstellen.
 import Anthropic from '@anthropic-ai/sdk';
 import { CHANNELS } from './constants.js';
+import { datesBetween, examplePlan, exampleTexts, exampleShoots } from '../src/ai/voorbeeld.js';
+
+export { datesBetween, examplePlan };
 
 export const MODEL = process.env.JCS_AI_MODEL ?? 'claude-opus-5-5';
 
@@ -36,14 +39,6 @@ export const mediaAllowedForAi = (m) => !(m.has_recognizable_faces === 1 && m.ai
 // ---------- Hulpfuncties ----------
 
 const channelLabel = (key) => CHANNELS.find((c) => c.key === key)?.label ?? key;
-
-export function datesBetween(start, end) {
-  const out = [];
-  for (let d = new Date(`${start}T00:00:00Z`); d <= new Date(`${end}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
-  }
-  return out;
-}
 
 const isValidDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(`${s}T00:00:00Z`).getTime());
 const isValidTime = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
@@ -195,39 +190,6 @@ export function sanitizePlanItems(items, { client, periodStart, periodEnd, input
     }, []);
 }
 
-// Voorspelbare verdeling zonder AI: vaste weekdagen, onderwerpen uit klantinput en pijlers.
-const WEEKDAY_PATTERNS = { 1: [3], 2: [2, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
-const EXAMPLE_TIMES = { linkedin: '08:30', facebook: '19:30', instagram: '19:00', tiktok: '20:00', youtube: '17:00', pinterest: '20:30', x: '12:00' };
-
-export function examplePlan({ client, periodStart, periodEnd, inputs, media }) {
-  const pattern = WEEKDAY_PATTERNS[Math.min(7, Math.max(1, client.posts_per_week || 3))];
-  const days = datesBetween(periodStart, periodEnd).filter((d) => pattern.includes(new Date(`${d}T00:00:00Z`).getUTCDay()));
-  const pillars = client.content_pillars.length ? client.content_pillars : [null];
-  const mediaPool = [...media].sort((a, b) => a.times_used - b.times_used);
-  const items = days.map((date, i) => {
-    const input = inputs[i];
-    const pillar = pillars[i % pillars.length];
-    const linked = input ? mediaPool.filter((m) => m.client_input_id === input.id) : [];
-    const pick = linked.length ? linked.slice(0, 3) : mediaPool.length ? [mediaPool[i % mediaPool.length]] : [];
-    const firstChannel = client.channels[0];
-    return {
-      date,
-      time: EXAMPLE_TIMES[firstChannel] ?? '12:00',
-      topic: input ? (input.title || input.body.split('\n')[0]).slice(0, 80) : `${pillar ?? 'Algemeen'} — onderwerp nader te bepalen`,
-      channels: [...client.channels],
-      pillar,
-      clientInputId: input?.id ?? null,
-      media: pick.map((m) => m.id),
-      rationale: input ? 'Gebaseerd op aangeleverde klantinput.' : 'Evenwichtige spreiding over de contentpijlers.',
-      texts: {},
-    };
-  });
-  return {
-    items,
-    note: 'Voorbeeldverdeling zonder AI (er is geen ANTHROPIC_API_KEY ingesteld). Pas onderwerpen, datums en kanalen zelf aan.',
-  };
-}
-
 // ---------- Teksten per kanaal ----------
 
 const TEXTS_SCHEMA = {
@@ -299,14 +261,6 @@ export async function writeTexts({ client, posts }) {
   });
 }
 
-function exampleTexts(client, post) {
-  const texts = {};
-  for (const channel of post.channels) {
-    texts[channel] = `[Voorbeeldtekst ${channelLabel(channel)} — geen AI-sleutel ingesteld]\n${post.topic}${post.input ? `\n\n${post.input.body.slice(0, 300)}` : ''}`;
-  }
-  return texts;
-}
-
 // ---------- Contentshoot-voorstellen ----------
 
 const SHOOT_SCHEMA = {
@@ -327,12 +281,7 @@ const SHOOT_SCHEMA = {
 };
 
 export async function suggestShoots({ client, media, recentTopics }) {
-  if (!aiAvailable()) {
-    return client.content_pillars.slice(0, 5).map((p) => ({
-      title: `Beeld voor pijler "${p}"`,
-      body: `Voorbeeldvoorstel zonder AI: maak 5–10 foto's en 2 korte video's (verticaal) die "${p}" laten zien.`,
-    }));
-  }
+  if (!aiAvailable()) return exampleShoots(client);
   const counts = media.reduce((acc, m) => ({ ...acc, [m.kind]: (acc[m.kind] ?? 0) + 1 }), {});
   const prompt = [
     clientContext(client),

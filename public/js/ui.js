@@ -91,7 +91,7 @@ export function confirmDialog(title, message, { confirmLabel = 'Doorgaan', dange
 // Blokkeert de interface tijdens lange acties (zoals AI-verzoeken) met een duidelijke melding.
 export async function busy(message, fn) {
   const el = h('div', { class: 'bezig', role: 'status' },
-    h('div', { class: 'kaartje' }, h('img', { src: '/assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), h('div', {}, message)));
+    h('div', { class: 'kaartje' }, h('img', { src: 'assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), h('div', {}, message)));
   document.body.append(el);
   try {
     return await fn();
@@ -201,6 +201,7 @@ export async function copyText(text) {
 }
 
 export function downloadUrl(url) {
+  if (globalThis.JCS_DEMO) return toast('Downloaden kan in de demo niet. In de echte versie wel.');
   const a = h('a', { href: url, download: '' });
   document.body.append(a);
   a.click();
@@ -240,5 +241,5 @@ export function fileButton(input, label, emptyText = 'Nog niets gekozen') {
 }
 
 export function emptyState(message, action) {
-  return h('div', { class: 'leeg' }, h('img', { src: '/assets/brand/svg/aanhalingstekens-lijn-turkoois.svg', alt: '' }), h('p', {}, message), action ?? null);
+  return h('div', { class: 'leeg' }, h('img', { src: 'assets/brand/svg/aanhalingstekens-lijn-turkoois.svg', alt: '' }), h('p', {}, message), action ?? null);
 }

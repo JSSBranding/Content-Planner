@@ -486,3 +486,16 @@ table.inricht .opslagstatus { width: 128px; }
 .klantlink { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 500; white-space: nowrap; }
 .klantlink:hover { text-decoration: underline; }
 .klantlink .initialen { width: 28px; height: 28px; border-radius: 7px; background: var(--inkt); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 600; flex: none; }
+
+/* ---------- Demoversie ---------- */
+.demoblok { background: rgb(255 255 255 / 7%); border-radius: var(--r); padding: 10px 10px 8px; display: grid; gap: 6px; margin-top: 4px; }
+.demoblok .demolabel { display: inline-flex; width: max-content; font-size: 11px; font-weight: 600; background: var(--turkoois); color: var(--inkt); border-radius: 10px; padding: 1px 8px; }
+.demoblok label { color: #c9cbcb; font-size: 12px; margin: 2px 0 0; font-weight: 400; }
+.demoblok select { height: 32px; font-size: 12.5px; background-color: rgb(255 255 255 / 10%); color: #fff; border-color: transparent; }
+.demoblok select option { color: var(--tekst); }
+.demoknoppen { display: flex; justify-content: space-between; gap: 6px; }
+.demoknoppen button { all: unset; cursor: pointer; font-size: 12px; color: #c9cbcb; text-decoration: underline; text-underline-offset: 2px; }
+.demoknoppen button:hover { color: #fff; }
+.demoknoppen button:focus-visible { outline: 2px solid var(--turkoois); }
+.welkomlijst { display: grid; gap: 12px; margin: 14px 0; }
+.welkomlijst p { margin: 2px 0 0; }

@@ -3,7 +3,7 @@ import { api } from '../api.js';
 
 function shell(title, intro, form) {
   return h('div', { class: 'inlog' },
-    h('div', { class: 'merkvlak' }, h('img', { src: '/assets/brand/svg/logo-wit-op-turkoois.svg', alt: 'Jouw Social Studio' })),
+    h('div', { class: 'merkvlak' }, h('img', { src: 'assets/brand/svg/logo-wit-op-turkoois.svg', alt: 'Jouw Social Studio' })),
     h('div', { class: 'formvlak' },
       h('div', {}, h('h1', {}, title), h('p', { class: 'zacht' }, intro), form)));
 }

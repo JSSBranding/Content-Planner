@@ -8,7 +8,17 @@ export class ApiError extends Error {
   }
 }
 
+// In de demoversie (window.JCS_DEMO) beantwoordt een nagebootste server in de browser alle verzoeken.
+export const DEMO = Boolean(globalThis.JCS_DEMO);
+let demoServer = null;
+
 async function request(method, url, body) {
+  if (DEMO) {
+    demoServer ??= await import('./demo/server.js');
+    const res = await demoServer.handle(method, url, body);
+    if (res.status >= 400) throw new ApiError(res.status, res.body);
+    return res.body;
+  }
   const isForm = body instanceof FormData;
   const res = await fetch(`/api${url}`, {
     method,

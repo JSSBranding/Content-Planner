@@ -44,6 +44,14 @@ Zonder `ANTHROPIC_API_KEY` werkt alles ook, maar dan maakt een vaste voorbeeldge
 | `JCS_DATA_DIR` | `./data` | Map met de database (`jouw-content-studio.sqlite`) en geüploade bestanden (`uploads/`). **Maak hier back-ups van.** |
 | `JCS_SECURE_COOKIES` | `false` | Zet op `true` zodra de app via HTTPS draait. |
 
+### Demoversie
+
+```bash
+npm run demo:bouwen
+```
+
+Bouwt in `dist/demo` een demo die volledig in de browser draait: dezelfde interface, met een nagebootste server (`demo/server.js`) en voorbeeldgegevens (`demo/seed.js`). De goedkeuringsregels komen uit hetzelfde bestand als op de server. Wijzigingen blijven in de browser van wie test; AI-teksten zijn voorbeeldteksten en downloaden en Excel-import werken in de demo niet.
+
 ### Testen
 
 ```bash
