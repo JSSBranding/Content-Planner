@@ -42,7 +42,7 @@ function demoAccounts(formEl) {
     h('p', { class: 'zacht' }, 'Wachtwoord voor alle accounts: demo-wachtwoord. Klik op een account om het in te vullen.'),
     h('ul', {}, meta.demoAccounts.map((a) => h('li', {},
       h('button', { type: 'button', onclick: () => fillIn(a.email) },
-        h('strong', {}, roleLabel(a.role)), h('span', {}, `${a.name}, ${a.email}`))))));
+        h('strong', {}, roleLabel(a.role)), h('span', {}, a.email))))));
 }
 
 export function loginView(onLoggedIn) {

@@ -192,6 +192,23 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const count = () => { counter.textContent = `${body.value.length} tekens`; };
     count();
     const source = h('textarea', { rows: 3, value: item.source_info, disabled: !contentEditable, oninput: markDirty });
+
+    // Nieuwe post: kanalen aanvinken, één tekst voor alle kanalen of per kanaal een eigen tekst.
+    const startChannels = start.channels ?? (start.channel ? [start.channel] : channels);
+    const channelBoxes = channels.map((ch) => h('label', {}, h('input', { type: 'checkbox', value: ch, checked: startChannels.includes(ch), onchange: () => { markDirty(); drawPerChannel(); } }), channelLabel(ch)));
+    const chosenChannels = () => channelBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.value);
+    const perChannelToggle = h('input', { type: 'checkbox', onchange: () => drawPerChannel(true) });
+    const perChannelTexts = {};
+    const perChannelHost = h('div', { class: 'teksten-per-kanaal' });
+    function drawPerChannel(copyShared = false) {
+      if (!perChannelToggle.checked) { fill(perChannelHost); body.parentElement.hidden = false; return; }
+      body.parentElement.hidden = true;
+      fill(perChannelHost, chosenChannels().map((ch) => {
+        perChannelTexts[ch] ??= h('textarea', { rows: 6, 'aria-label': `Tekst voor ${channelLabel(ch)}`, oninput: markDirty });
+        if (copyShared && !perChannelTexts[ch].value) perChannelTexts[ch].value = body.value;
+        return h('div', { class: 'veld' }, h('label', {}, `Tekst voor ${channelLabel(ch)}`), perChannelTexts[ch]);
+      }));
+    }
     const notes = h('textarea', { rows: 3, value: item.internal_notes, disabled: !statusEditable, oninput: markDirty, placeholder: 'Bijv. instructies voor branding, of waar de post is ingepland' });
 
     const mediaHost = h('div');
@@ -235,10 +252,13 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       }
       try {
         if (isNew) {
+          const chosen = chosenChannels();
+          if (!chosen.length) return showError(new Error('Vink minimaal één kanaal aan.'));
           // Zonder eigen keuze bepaalt de server de status op basis van tekst en beeld.
           if (!statusTouched) delete payload.status;
-          await api.post(`/clients/${clientId}/calendar`, { ...payload, date: payload.publish_date, time: payload.suggested_time });
-          toast('Post toegevoegd');
+          const posts = chosen.map((ch) => ({ channel: ch, body: perChannelToggle.checked ? perChannelTexts[ch]?.value ?? '' : body.value }));
+          await api.post(`/clients/${clientId}/calendar/batch`, { ...payload, date: payload.publish_date, time: payload.suggested_time, posts });
+          toast(chosen.length === 1 ? 'Post toegevoegd' : `Post toegevoegd op ${chosen.length} kanalen`);
         } else {
           await api.patch(`/calendar/${item.id}`, payload);
           toast('Wijzigingen opgeslagen');
@@ -340,9 +360,12 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('button', { class: 'knop kaal icoonknop', 'aria-label': 'Sluiten', title: 'Sluiten (Esc)', onclick: () => tryClose() }, icon('sluit'))),
       h('div', { class: 'paneel-inhoud' },
         h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee)),
+        isNew ? h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes),
+          h('label', { class: 'vinkje klein-vinkje', style: { marginTop: '10px' } }, perChannelToggle, 'Andere tekst per kanaal')) : null,
+        perChannelHost,
         h('div', { class: 'veld' },
           h('div', { class: 'tekstkop' },
-            h('label', { for: 'celtekst' }, `Tekst voor ${channelLabel(item.channel)}`), counter,
+            h('label', { for: 'celtekst' }, isNew ? 'Tekst (voor alle gekozen kanalen)' : `Tekst voor ${channelLabel(item.channel)}`), counter,
             h('button', { class: 'knop klein', type: 'button', onclick: () => copyText(body.value) }, icon('kopie', { size: 15 }), 'Kopiëren'),
             contentEditable && !isNew ? h('button', { class: 'knop klein', type: 'button', onclick: aiText, title: 'Laat de AI deze tekst (opnieuw) schrijven' }, icon('sparkle', { size: 15 }), item.body ? 'Herschrijven' : 'Laten schrijven') : null),
           body),
@@ -354,8 +377,8 @@ export async function calendarView({ clientId, tab, query, rerender }) {
           mediaHost),
         field('Interne opmerkingen', notes),
         h('details', { class: 'uitklap', open: isNew },
-          h('summary', {}, icon('bewerk', { size: 16 }), 'Datum, kanaal, onderwerp en bron'),
-          h('div', { class: 'rij' }, field('Datum', date), field('Tijd (voorstel)', time), field('Kanaal', channel)),
+          h('summary', {}, icon('bewerk', { size: 16 }), isNew ? 'Datum, onderwerp en bron' : 'Datum, kanaal, onderwerp en bron'),
+          h('div', { class: 'rij' }, field('Datum', date), field('Tijd (voorstel)', time), isNew ? null : field('Kanaal', channel)),
           field('Onderwerp', topic),
           field('Klantinput en bron', source)),
         versions),
@@ -450,7 +473,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
   }, icon('excel', { size: 16 }), 'Excel');
 
   const addButton = can('editContent')
-    ? h('button', { class: 'knop primair', onclick: () => openEditor({ publish_date: today >= from && today <= to ? today : from, channel: channels[0] }) }, icon('plus', { size: 16 }), 'Post toevoegen')
+    ? h('button', { class: 'knop primair', onclick: () => openEditor({ publish_date: today >= from && today <= to ? today : from, channel: channels[0], channels }) }, icon('plus', { size: 16 }), 'Post toevoegen')
     : null;
 
   return page(head([excelButton, addButton]),

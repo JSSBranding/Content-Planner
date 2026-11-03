@@ -43,7 +43,7 @@ export async function clientsView({ query }) {
         h('div', {}, h('h2', {}, newMode === 'lijst' ? 'Klanten toevoegen' : 'Klant toevoegen'),
           h('p', { class: 'zacht' }, newMode === 'lijst'
             ? 'Plak een lijst met namen, één per regel. Namen die al bestaan worden overgeslagen. Kanalen en strategie kun je daarna per klant aanpassen.'
-            : 'Begin met naam, kanalen en frequentie. Strategie en AI-geheugen vul je later aan.')),
+            : 'Begin met naam, kanalen en frequentie. Wat de klant doet en de afspraken vul je later aan op het klantprofiel.')),
         switcher),
       newMode === 'lijst' ? bulkForm() : clientForm({ client: null, onSaved: (c) => { location.hash = `#/klant/${c.id}/kalender`; }, onCancel: () => { location.hash = '#/'; } }));
   }
@@ -94,7 +94,7 @@ export async function clientsView({ query }) {
   const totalPlans = active.reduce((n, c) => n + c.open_plans, 0);
   return page(
     pageHead({
-      title: `Goedendag, ${meta.user.name.split(' ')[0]}`,
+      title: 'Goedendag',
       sub: `${active.length} klant${active.length === 1 ? '' : 'en'}. ${totalPlans ? `${totalPlans} conceptplanning${totalPlans > 1 ? 'en' : ''} wacht${totalPlans > 1 ? 'en' : ''} op beoordeling.` : 'Alle conceptplanningen zijn beoordeeld.'}`,
       actions: newButton,
     }),

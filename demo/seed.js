@@ -1,6 +1,7 @@
-// Voorbeeldgegevens voor de demoversie. Bakkerij De Vries en Fietsenmaker Van Dam zijn verzonnen;
+// Voorbeeldgegevens voor de demoversie. Bakkerij De Vries is een verzonnen voorbeeldklant;
 // de overige klantnamen komen uit db/startklanten.txt en starten, net als in de echte app, zonder inrichting.
 import { START_CLIENTS } from './startklanten.js';
+import { CAN } from './lib/constants.js';
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -111,10 +112,10 @@ export function buildSeed(today) {
   const PASSWORD_HASH = 'c1cf012eef5880cf58f15b27bbfdefa994fcaf742bb8e5f4f0095458257fc868';
   const account = (id, name, email, role) => ({ id, name, email, role, created_at: created, password_hash: PASSWORD_HASH, demoAccount: true });
   const users = [
-    account('u-chef', 'Joost (chefke)', 'chefkes@demo.nl', 'admin'),
-    account('u-lisa', 'Lisa Jansen', 'smm@demo.nl', 'social_media_manager'),
-    account('u-vera', 'Vera van Branding', 'branding@demo.nl', 'vormgever'),
-    account('u-sam', 'Sam (stage)', 'stage@demo.nl', 'medewerker'),
+    account('u-chef', 'Chefkes', 'chefkes@demo.nl', 'admin'),
+    account('u-lisa', 'Social media manager', 'smm@demo.nl', 'social_media_manager'),
+    account('u-vera', 'Branding', 'branding@demo.nl', 'vormgever'),
+    account('u-sam', 'Stage', 'stage@demo.nl', 'medewerker'),
   ];
 
   const bakkerij = {
@@ -126,14 +127,6 @@ export function buildSeed(today) {
     context: 'Familiebakkerij sinds 1974, nu in handen van Jan de Vries. Alles wordt dagelijks vers gebakken in eigen bakkerij achter de winkel. Bekend om zuurdesembrood, appeltaart van oma en croissants. Sinds kort een nieuwe steenoven. Levert ook aan bedrijven in de buurt (vergaderingen, borrels).',
     target_audience: 'Gezinnen en ouderen in Utrecht-Oost; kantoren en zzp\'ers in de buurt voor catering.',
     website: 'www.bakkerijdevries-voorbeeld.nl', contact: 'Jan de Vries, eigenaar (bij voorkeur via WhatsApp)',
-  };
-  const fiets = {
-    id: 'c-fiets', name: 'Fietsenmaker Van Dam', created_at: created, archived: false,
-    strategy: 'Fietsenmaker en -winkel in Houten. Doel: meer onderhoudsafspraken en verkoop van e-bikes.',
-    tone_of_voice: 'Behulpzaam en deskundig, je-vorm.', content_pillars: ['Onderhoud', 'E-bikes', 'Team'],
-    channels: ['instagram', 'facebook'], posts_per_week: 2, ai_memory: 'Altijd verwijzen naar online afspraak maken.',
-    context: 'Fietsenmaker met werkplaats en winkel in Houten. Specialist in e-bikes en onderhoud; snelle reparaties terwijl je wacht.',
-    target_audience: 'Forenzen en gezinnen in Houten en omgeving, 35+.', website: 'www.vandamfietsen-voorbeeld.nl', contact: 'Kees van Dam',
   };
   const realClients = START_CLIENTS.map((name) => ({
     id: id('c'), name, created_at: created, archived: false, strategy: '', tone_of_voice: '', content_pillars: [], channels: [], posts_per_week: 3, ai_memory: '',
@@ -153,13 +146,11 @@ export function buildSeed(today) {
     pic('winkel', 'c-bakkerij', 'winkel.jpg', 'foto', { description: 'De winkel van buiten', tags: ['winkel', 'buurt'] }),
     pic('taart', 'c-bakkerij', 'taart.jpg', 'foto', { description: 'Appeltaart van oma', tags: ['taart', 'aanbod'] }),
     pic('bakken', 'c-bakkerij', 'bakken.mp4', 'video', { description: 'Korte video van het bakproces', tags: ['achter de schermen'] }),
-    pic('ebike', 'c-fiets', 'ebike.jpg', 'foto', { description: 'Nieuwe e-bikes in de showroom', tags: ['e-bike'] }),
-    pic('werkplaats', 'c-fiets', 'werkplaats.jpg', 'foto', { description: 'De werkplaats', tags: ['onderhoud'] }),
   ];
 
   const inputs = [
     { id: 'i-oven', client_id: 'c-bakkerij', source: 'handmatig', title: 'Nieuwe steenoven', body: 'We hebben een nieuwe steenoven! Daardoor zijn de broden nog knapperiger. Foto\'s bijgevoegd.', instructions: '', processed: true, created_by: 'u-lisa', created_at: created },
-    { id: 'i-whatsapp', client_id: 'c-bakkerij', source: 'whatsapp', title: 'WhatsApp met Jan de Vries', body: `${t} 09:15 — Jan de Vries: Hoi! Volgende maand starten we met speltcroissants, leuk om te delen?\n${t} 09:16 — Jan de Vries: En we doen mee aan het buurtfeest, we bakken taarten voor de kinderen.\n${t} 09:20 — Lisa (JSS): Top, nemen we mee in de planning!`, instructions: '', processed: false, created_by: 'u-lisa', created_at: new Date(today.getTime() - 86400000).toISOString() },
+    { id: 'i-whatsapp', client_id: 'c-bakkerij', source: 'whatsapp', title: 'WhatsApp met Jan de Vries', body: `${t} 09:15 — Jan de Vries: Hoi! Volgende maand starten we met speltcroissants, leuk om te delen?\n${t} 09:16 — Jan de Vries: En we doen mee aan het buurtfeest, we bakken taarten voor de kinderen.\n${t} 09:20 — JSS: Top, nemen we mee in de planning!`, instructions: '', processed: false, created_by: 'u-lisa', created_at: new Date(today.getTime() - 86400000).toISOString() },
     { id: 'i-jubileum', client_id: 'c-bakkerij', source: 'email', title: '10 jaar in deze straat', body: 'Over een paar weken zitten we tien jaar op deze plek. We willen dat vieren met een actie: elke klant een gratis koekje en een winactie voor een ontbijt voor twee.', instructions: 'Winactie pas in de laatste week aankondigen.', processed: false, created_by: 'u-sam', created_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
   ];
 
@@ -205,28 +196,6 @@ export function buildSeed(today) {
     });
   });
 
-  // Fietsenmaker: dinsdag en donderdag
-  const fietsTopics = [
-    ['Gratis winterbeurt-check', 'Onderhoud', 'werkplaats', 'Maak nu online een afspraak voor de gratis wintercheck. Banden, remmen en verlichting in tien minuten nagekeken.'],
-    ['Nieuw binnen: lichte e-bikes', 'E-bikes', 'ebike', 'De nieuwe lichte e-bikes staan in de showroom. Kom een proefrit maken of plan online een afspraak.'],
-    ['Tip: bandenspanning in de kou', 'Onderhoud', 'werkplaats', 'In de kou zakt de bandenspanning sneller. Pomp je banden elke twee weken op, dan fiets je lichter en veiliger.'],
-    ['Monteur Kees aan het woord', 'Team', 'werkplaats', 'Kees sleutelt al dertig jaar aan fietsen. Zijn tip: laat je ketting elk halfjaar smeren.'],
-  ];
-  const fietsDays = [];
-  for (let d = first; d <= last; d = addDays(d, 1)) if ([2, 4].includes(d.getDay())) fietsDays.push(iso(d));
-  fietsDays.forEach((date, i) => {
-    const [topic, pillar, m, text] = fietsTopics[i % fietsTopics.length];
-    fiets.channels.forEach((channel) => {
-      const done = date < t;
-      calendar.push({
-        id: id('k'), client_id: 'c-fiets', publish_date: date, suggested_time: channel === 'instagram' ? '19:00' : '19:30', channel,
-        body: channel === 'instagram' ? `${topic} 🚲\n\n${text}\n\n#fietsenmakervandam #houten` : text, topic, content_pillar: pillar, source_info: '',
-        internal_notes: done ? 'Ingepland in Meta Business Suite' : '', status: done ? 'volledig_ingepland' : i % 3 === 2 ? 'placeholder_actie_nodig' : 'tekst_gereed',
-        assignee_id: null, plan_id: null, created_by: 'u-lisa', created_at: created, updated_at: created, media: [`m-${m}`],
-      });
-    });
-  });
-
   // Conceptplanning voor volgende maand, wacht op beoordeling
   const nFirst = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const nLast = new Date(today.getFullYear(), today.getMonth() + 2, 0);
@@ -258,8 +227,8 @@ export function buildSeed(today) {
   });
 
   return {
-    version: 2, currentUserId: null, users,
-    clients: [bakkerij, fiets, ...realClients],
+    version: 3, currentUserId: null, users, permissions: structuredClone(CAN),
+    clients: [bakkerij, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };
 }

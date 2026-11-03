@@ -6,10 +6,10 @@ import {
 } from './lib/plan.js';
 import { examplePlan, exampleShoots } from './lib/voorbeeld.js';
 import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
-import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, CAN } from './lib/constants.js';
+import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, PERMISSION_KEYS } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v2';
+const STORE_KEY = 'jcs-demo-v3';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 2) return saved;
+    if (saved?.version === 3) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -58,7 +58,7 @@ export async function hashPassword(password) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`jcs-demo:${password}`));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
-const can = (permission) => CAN[permission].includes(currentUser().role);
+const can = (permission) => Boolean(state.permissions[permission]?.includes(currentUser().role));
 const need = (permission) => { if (!can(permission)) fail(403, 'Je hebt geen rechten voor deze actie.'); };
 const userName = (id) => state.users.find((u) => u.id === id)?.name ?? null;
 
@@ -251,7 +251,7 @@ const route = (method, pattern, handler) => {
 
 const PUBLIC = new Set(['GET /meta', 'POST /login', 'POST /logout', 'POST /demo/opnieuw']);
 route('GET', '/meta', () => ({
-  channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: CAN,
+  channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: state.permissions, permissionList: PERMISSIONS,
   ai: { available: false, model: null }, needsSetup: false, user: currentUser() ? publicUser(currentUser()) : null, demo: true,
   demoAccounts: state.users.filter((u) => u.demoAccount).map((u) => ({ name: u.name, email: u.email, role: u.role })),
 }));
@@ -263,16 +263,24 @@ route('POST', '/login', async (_, b) => {
 });
 route('POST', '/logout', () => { state.currentUserId = null; return { ok: true }; });
 route('POST', '/demo/opnieuw', () => { reset(); return { ok: true }; });
+route('PUT', '/permissions', (_, b) => {
+  need('manageUsers');
+  const next = b?.permissions ?? {};
+  const clean = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, [...new Set((next[p] ?? []).filter((r) => ROLE_KEYS.includes(r)))]]));
+  if (!clean.manageUsers.includes('admin')) clean.manageUsers.push('admin');
+  state.permissions = clean;
+  return { permissions: clean };
+});
 
 // Gebruikers
 route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role })).sort((a, b) => a.name.localeCompare(b.name)));
 route('POST', '/users', async (_, b) => {
   need('manageUsers');
-  if (!str(b?.name).trim() || !str(b?.email).includes('@') || !ROLE_KEYS.includes(b?.role) || str(b?.password).length < 10) {
-    fail(400, 'Vul naam, e-mailadres, rol en een wachtwoord van minimaal 10 tekens in.');
+  if (!str(b?.email).includes('@') || !ROLE_KEYS.includes(b?.role) || str(b?.password).length < 10) {
+    fail(400, 'Vul rol, e-mailadres en een wachtwoord van minimaal 10 tekens in.');
   }
   if (state.users.some((u) => u.email.toLowerCase() === b.email.trim().toLowerCase())) fail(409, 'Dit e-mailadres bestaat al.');
-  const user = { id: newId(), name: b.name.trim(), email: b.email.trim(), role: b.role, created_at: now(), password_hash: await hashPassword(b.password) };
+  const user = { id: newId(), name: str(b.name).trim() || ROLES.find((r) => r.key === b.role).label, email: b.email.trim(), role: b.role, created_at: now(), password_hash: await hashPassword(b.password) };
   state.users.push(user);
   return { id: user.id };
 });
@@ -569,6 +577,25 @@ route('POST', '/clients/:id/calendar', ({ id }, b) => {
   });
   return mapItem(item);
 });
+route('POST', '/clients/:id/calendar/batch', ({ id }, b) => {
+  need('editContent');
+  clientOr404(id);
+  if (!isDate(b?.date)) fail(400, 'Kies een geldige datum.');
+  const posts = (Array.isArray(b.posts) ? b.posts : []).filter((p) => CHANNEL_KEYS.includes(p?.channel));
+  if (!posts.length) fail(400, 'Kies minimaal één kanaal.');
+  if (new Set(posts.map((p) => p.channel)).size !== posts.length) fail(400, 'Elk kanaal kan maar één keer.');
+  const taken = posts.filter((p) => cellTaken(id, b.date, p.channel));
+  if (taken.length) {
+    fail(409, `Op deze datum staat al een post op ${taken.map((p) => CHANNELS.find((c) => c.key === p.channel).label).join(' en ')}. Haal dat kanaal weg of kies een andere datum.`, { takenChannels: taken.map((p) => p.channel) });
+  }
+  const media = Array.isArray(b.media) ? b.media : [];
+  const items = posts.map((p) => insertItem({
+    clientId: id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
+    pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
+    status: b.status ?? initialStatus({ body: p.body, media }), assigneeId: b.assignee_id || null, media,
+  }));
+  return { items: items.map(mapItem) };
+});
 route('GET', '/calendar/:id', ({ id }) => {
   const item = itemOr404(id);
   const versions = state.versions.filter((v) => v.calendar_item_id === id).sort((a, b) => b.changed_at.localeCompare(a.changed_at))
@@ -576,10 +603,10 @@ route('GET', '/calendar/:id', ({ id }) => {
   return { ...mapItem(item), versions };
 });
 route('PATCH', '/calendar/:id', ({ id }, b) => {
-  need('updateStatus');
+  if (!can('updateStatus') && !can('editContent')) fail(403, 'Je hebt geen rechten voor deze actie.');
   const item = itemOr404(id);
   const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
-  if (!can('editContent') && contentFields.some((f) => f in (b ?? {}))) fail(403, 'Met de rol Branding kun je alleen de status en interne opmerkingen aanpassen.');
+  if (!can('editContent') && contentFields.some((f) => f in (b ?? {}))) fail(403, 'Met jouw rechten kun je alleen de status en interne opmerkingen aanpassen.');
   if (b?.status && !CALENDAR_STATUS_KEYS.includes(b.status)) fail(400, 'Onbekende status.');
   if ('publish_date' in b && !isDate(b.publish_date)) fail(400, 'Ongeldige datum.');
   if ('channel' in b && !CHANNEL_KEYS.includes(b.channel)) fail(400, 'Onbekend kanaal.');

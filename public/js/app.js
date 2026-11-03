@@ -89,8 +89,8 @@ function sidebar(clients, route) {
         meta.ai.available ? 'AI actief' : 'AI in voorbeeldmodus'),
       meta.demo ? demoBlock() : null,
       h('div', { class: 'gebruiker' },
-        h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(meta.user.name)),
-        h('div', { class: 'wie' }, h('div', {}, meta.user.name), h('div', { class: 'rol' }, roleLabel(meta.user.role))),
+        h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(roleLabel(meta.user.role))),
+        h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email)),
         h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog')))));
 }
 
@@ -123,13 +123,13 @@ function showWelcome() {
     ['Een planning goedkeuren', 'Open Bakkerij De Vries, tabblad Input en planning. Er wacht een voorstel voor volgende maand. Pas iets aan en keur het goed. Je ziet ook wat er gebeurt als er al een post op een datum staat.'],
     ['De kalender gebruiken', 'Naast de datums zie je feest- en actiedagen. Beweeg over een post om de tekst te kopiëren of de status te wijzigen; klik erop voor tekst, beeld, pijler en opmerkingen.'],
     ['Klanten snel beheren', 'Dubbelklik in de zijbalk op een klantnaam om hem te wijzigen, of gebruik de drie puntjes voor meer opties.'],
-    ['Inloggen met een andere rol', 'Log uit (linksonder) en log in als Branding of Stage om te zien wat die rol wel en niet kan.'],
+    ['Inloggen met een andere rol', 'Log uit (linksonder) en log in als Branding of Stage om te zien wat die rol wel en niet kan. Als Chefkes vink je onder Team en rechten aan wie wat mag.'],
     ['Klanten inrichten', 'Onder Klanten inrichten staan jullie eigen klantnamen. Vink kanalen aan en vul het aantal posts per week in.'],
   ];
   modal({
     title: 'Welkom in de demo van Jouw Content Studio', width: '620px',
     body: [
-      h('p', {}, 'Dit is een volledig werkende demo met voorbeeldgegevens. Bakkerij De Vries en Fietsenmaker Van Dam zijn verzonnen klanten om mee te oefenen.'),
+      h('p', {}, 'Dit is een volledig werkende demo met voorbeeldgegevens. Bakkerij De Vries is een verzonnen klant om mee te oefenen; de andere klanten zijn jullie eigen klantnamen, nog niet ingericht.'),
       h('div', { class: 'welkomlijst' }, tries.map(([title, text]) => h('div', {}, h('strong', {}, title), h('p', { class: 'zacht' }, text)))),
       h('p', { class: 'zacht' }, 'Wat werkt anders dan in de echte versie: teksten en voorstellen komen uit een vaste voorbeeldgenerator in plaats van de AI, downloaden en Excel-import werken niet, en je wijzigingen blijven alleen in deze browser.'),
     ],

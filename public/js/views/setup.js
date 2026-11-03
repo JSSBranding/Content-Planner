@@ -73,5 +73,5 @@ export async function clientSetupView({ query }) {
     h('div', { class: 'tabel-wrap' }, h('table', { class: 'lijst inricht' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Klant'), meta.channels.map((ch) => h('th', { class: 'midden' }, ch.label)), h('th', {}, 'Posts per week'), h('th', {}, ''))),
       tbody)),
-    h('p', { class: 'zacht', style: { marginTop: '14px' } }, 'Strategie, contentpijlers en het AI-geheugen vul je per klant in op het klantprofiel. Klik daarvoor op de klantnaam.'));
+    h('p', { class: 'zacht', style: { marginTop: '14px' } }, 'Wat de klant doet, doelen, afspraken en contentpijlers vul je per klant in op het klantprofiel. Klik daarvoor op de klantnaam.'));
 }

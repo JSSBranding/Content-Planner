@@ -5,11 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UPLOAD_DIR, newId, json, transaction } from './db.js';
 import {
-  CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, CAN,
+  CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS,
 } from './constants.js';
 import {
   sessionMiddleware, requireLogin, requirePermission, can, createUser, createSession, verifyPassword,
-  setSessionCookie, hashPassword, COOKIE,
+  setSessionCookie, hashPassword, COOKIE, loadPermissions, savePermissions, currentPermissions,
 } from './auth.js';
 import {
   getClient, mapClient, listMedia, listInputs, listCalendar, getCalendarItem, getPlan, snapshotCalendarItem,
@@ -44,6 +44,7 @@ export function createApp(db, { secureCookies = false } = {}) {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
   app.use(sessionMiddleware(db));
+  loadPermissions(db);
   app.use((_req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'same-origin');
@@ -218,7 +219,7 @@ export function createApp(db, { secureCookies = false } = {}) {
 
   api.get('/meta', (req, res) => {
     res.json({
-      channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: CAN,
+      channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: currentPermissions(), permissionList: PERMISSIONS,
       ai: { available: aiAvailable(), model: aiAvailable() ? MODEL : null },
       needsSetup: userCount() === 0,
       user: req.user ?? null,
@@ -264,6 +265,14 @@ export function createApp(db, { secureCookies = false } = {}) {
   // Alles hieronder vereist een ingelogde gebruiker.
   api.use(requireLogin);
 
+  // ---------- Rechten per rol ----------
+
+  api.put('/permissions', requirePermission('manageUsers'), (req, res) => {
+    const body = req.body?.permissions;
+    if (!body || typeof body !== 'object') fail(400, 'Ongeldige rechten.');
+    res.json({ permissions: savePermissions(db, body) });
+  });
+
   // ---------- Gebruikers ----------
 
   api.get('/users', (req, res) => {
@@ -272,9 +281,11 @@ export function createApp(db, { secureCookies = false } = {}) {
   });
 
   api.post('/users', requirePermission('manageUsers'), (req, res) => {
-    const { name, email, role, password } = req.body ?? {};
-    if (!str(name).trim() || !str(email).includes('@') || !ROLE_KEYS.includes(role) || str(password).length < 10) {
-      fail(400, 'Vul naam, e-mailadres, rol en een wachtwoord van minimaal 10 tekens in.');
+    const { email, role, password } = req.body ?? {};
+    // Accounts zijn per rol; zonder eigen naam krijgt het account de naam van de rol.
+    const name = str(req.body?.name).trim() || ROLES.find((r) => r.key === role)?.label;
+    if (!str(email).includes('@') || !ROLE_KEYS.includes(role) || str(password).length < 10) {
+      fail(400, 'Vul rol, e-mailadres en een wachtwoord van minimaal 10 tekens in.');
     }
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email.trim())) fail(409, 'Dit e-mailadres bestaat al.');
     res.status(201).json({ id: createUser(db, { name, email, role, password }) });
@@ -687,6 +698,28 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.status(201).json(getCalendarItem(db, id));
   });
 
+  // Eén post op meerdere kanalen tegelijk, met eventueel per kanaal een eigen tekst.
+  // Staat er op een van de kanalen al iets, dan wordt niets aangemaakt en krijg je te zien welke.
+  api.post('/clients/:id/calendar/batch', requirePermission('editContent'), (req, res) => {
+    const client = clientOr404(req.params.id);
+    const b = req.body ?? {};
+    if (!isDate(b.date)) fail(400, 'Kies een geldige datum.');
+    const posts = (Array.isArray(b.posts) ? b.posts : []).filter((p) => CHANNEL_KEYS.includes(p?.channel));
+    if (!posts.length) fail(400, 'Kies minimaal één kanaal.');
+    if (new Set(posts.map((p) => p.channel)).size !== posts.length) fail(400, 'Elk kanaal kan maar één keer.');
+    const taken = posts.filter((p) => db.prepare('SELECT 1 FROM calendar_items WHERE client_id = ? AND publish_date = ? AND channel = ?').get(client.id, b.date, p.channel));
+    if (taken.length) {
+      fail(409, `Op deze datum staat al een post op ${taken.map((p) => CHANNELS.find((c) => c.key === p.channel).label).join(' en ')}. Haal dat kanaal weg of kies een andere datum.`, { takenChannels: taken.map((p) => p.channel) });
+    }
+    const media = Array.isArray(b.media) ? b.media : [];
+    const ids = transaction(db, () => posts.map((p) => insertCalendarItem({
+      clientId: client.id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
+      pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
+      status: b.status ?? initialStatus({ body: p.body, media }), assigneeId: b.assignee_id || null, media, createdBy: req.user.id,
+    })));
+    res.status(201).json({ items: ids.map((id) => getCalendarItem(db, id)) });
+  });
+
   api.get('/calendar/:id', (req, res) => {
     const item = calendarItemOr404(req.params.id);
     const versions = db.prepare(`SELECT v.id, v.reason, v.changed_by_ai, v.changed_at, u.name AS changed_by_name FROM calendar_item_versions v
@@ -694,12 +727,13 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.json({ ...item, versions });
   });
 
-  api.patch('/calendar/:id', requirePermission('updateStatus'), (req, res) => {
+  api.patch('/calendar/:id', (req, res) => {
+    if (!can(req.user, 'updateStatus') && !can(req.user, 'editContent')) fail(403, 'Je hebt geen rechten voor deze actie.');
     const item = calendarItemOr404(req.params.id);
     const b = req.body ?? {};
     const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
     if (!can(req.user, 'editContent') && contentFields.some((f) => f in b)) {
-      fail(403, 'Met de rol Branding kun je alleen de status en interne opmerkingen aanpassen.');
+      fail(403, 'Met jouw rechten kun je alleen de status en interne opmerkingen aanpassen.');
     }
     if (b.status && !CALENDAR_STATUS_KEYS.includes(b.status)) fail(400, 'Onbekende status.');
     if ('publish_date' in b && !isDate(b.publish_date)) fail(400, 'Ongeldige datum.');

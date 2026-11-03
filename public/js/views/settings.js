@@ -5,16 +5,16 @@ import { clientHeader } from './clients.js';
 export function clientForm({ client, onSaved, onCancel }) {
   const readOnly = !can('manageClients');
   const c = client ?? { name: '', strategy: '', tone_of_voice: '', content_pillars: [], channels: [], posts_per_week: 3, ai_memory: '', context: '', target_audience: '', website: '', contact: '' };
-  const context = h('textarea', { rows: 6, disabled: readOnly, value: c.context ?? '', placeholder: 'Wat doet het bedrijf, wat maakt het bijzonder, welke producten of diensten zijn belangrijk, wat speelt er nu?' });
+  const context = h('textarea', { rows: 5, disabled: readOnly, value: c.context ?? '', placeholder: 'Wat doet het bedrijf, wat maakt het bijzonder, welke producten of diensten zijn belangrijk, wat speelt er nu?' });
   const audience = h('textarea', { rows: 3, disabled: readOnly, value: c.target_audience ?? '', placeholder: 'Bijv. gezinnen in de wijk, 30 tot 50 jaar; bedrijven in de regio voor catering' });
   const website = h('input', { type: 'text', disabled: readOnly, value: c.website ?? '', placeholder: 'www.voorbeeld.nl' });
   const contact = h('input', { type: 'text', disabled: readOnly, value: c.contact ?? '', placeholder: 'Naam en hoe je diegene bereikt' });
   const name = h('input', { type: 'text', value: c.name, required: true, disabled: readOnly });
-  const strategy = h('textarea', { rows: 5, disabled: readOnly, value: c.strategy });
-  const tone = h('textarea', { rows: 3, disabled: readOnly, value: c.tone_of_voice });
+  const strategy = h('textarea', { rows: 3, disabled: readOnly, value: c.strategy, placeholder: 'Bijv. meer bekendheid in de wijk en meer bestellingen voor feestjes' });
+  const tone = h('textarea', { rows: 2, disabled: readOnly, value: c.tone_of_voice, placeholder: 'Bijv. warm en nuchter, je-vorm, af en toe een emoji' });
   const pillars = h('textarea', { rows: 4, disabled: readOnly, value: c.content_pillars.join('\n') });
   const ppw = h('input', { type: 'number', min: 1, max: 21, value: String(c.posts_per_week), disabled: readOnly });
-  const memory = h('textarea', { rows: 8, disabled: readOnly, value: c.ai_memory });
+  const memory = h('textarea', { rows: 4, disabled: readOnly, value: c.ai_memory });
   const archived = h('input', { type: 'checkbox', checked: Boolean(c.archived), disabled: readOnly });
   const channelBoxes = meta.channels.map((ch) => h('label', {},
     h('input', { type: 'checkbox', value: ch.key, checked: c.channels.includes(ch.key), disabled: readOnly }), ch.label));
@@ -46,24 +46,22 @@ export function clientForm({ client, onSaved, onCancel }) {
       }
     },
   },
-  client ? h('div', { class: 'twee-kolommen' },
-    h('div', { style: { display: 'grid', gap: '20px' } },
-      h('div', { class: 'paneelblok' },
-        h('h2', {}, 'Over de klant'), h('p', { class: 'zacht' }, 'De context achter alle content. Gaat ook mee naar de AI.'),
-        field('Wat doet de klant?', context),
-        field('Doelgroep', audience),
-        h('div', { class: 'rij' }, field('Website', website), field('Contactpersoon', contact))),
-      h('div', { class: 'paneelblok' },
-        h('h2', {}, 'Basis'), h('p', { class: 'zacht' }, 'Wat er wanneer en waar gepost wordt.'),
-        field('Klantnaam', name),
-        h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
-        field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),
-        field('Contentpijlers', pillars, pillarHelp))),
+  client ? h('div', { class: 'twee-kolommen profiel' },
     h('div', { class: 'paneelblok' },
-      h('h2', {}, 'Strategie en AI-geheugen'), h('p', { class: 'zacht' }, 'Gaat mee bij elk AI-voorstel en elke tekst. Telefoonnummers en e-mailadressen worden eerst weggelaten.'),
-      field('Strategie', strategy, 'Doelen en wat de klant wil bereiken met social media.'),
+      h('h2', {}, 'Over de klant'),
+      h('p', { class: 'zacht' }, 'Alles wat je hier invult, gebruikt de AI bij voorstellen en teksten. Telefoonnummers en e-mailadressen worden eerst weggelaten.'),
+      field('Wat doet de klant?', context),
+      field('Doelgroep', audience),
+      field('Doelen op social media', strategy),
       field('Tone of voice', tone),
-      field('AI-klantgeheugen', memory, 'Vaste afspraken en lessen, bijv. "geen prijzen noemen", "altijd je-vorm", "liever minder LinkedIn".')))
+      field('Afspraken en aandachtspunten', memory, 'Wat altijd of nooit moet, bijv. "geen prijzen noemen", "altijd je-vorm", "medewerker X niet herkenbaar in beeld".'),
+      h('div', { class: 'rij' }, field('Website', website), field('Contactpersoon', contact))),
+    h('div', { class: 'paneelblok' },
+      h('h2', {}, 'Basis'), h('p', { class: 'zacht' }, 'Wat er wanneer en waar gepost wordt.'),
+      field('Klantnaam', name),
+      h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
+      field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),
+      field('Contentpijlers', pillars, pillarHelp)))
     : [
       field('Klantnaam', name),
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),

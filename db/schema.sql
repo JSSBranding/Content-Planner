@@ -13,6 +13,13 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Rechten per rol (aan te passen door chefkes). Leeg = standaardrechten uit server/constants.js.
+CREATE TABLE IF NOT EXISTS role_permissions (
+  permission TEXT NOT NULL,
+  role       TEXT NOT NULL,
+  PRIMARY KEY (permission, role)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token      TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

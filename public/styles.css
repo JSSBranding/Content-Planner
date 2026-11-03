@@ -529,3 +529,12 @@ table.inricht .opslagstatus { width: 128px; }
 .demo-accounts button:hover { border-color: var(--inkt); }
 .demo-accounts button:focus-visible { outline: 2px solid var(--inkt); }
 .demo-accounts button span { color: var(--tekst-zacht); }
+
+table.rechten td, table.rechten th { padding: 10px 12px; }
+table.rechten .midden { text-align: center; width: 110px; }
+table.rechten input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+table.rechten input[type=checkbox]:disabled { cursor: not-allowed; }
+.teksten-per-kanaal { display: grid; gap: 4px; }
+.teksten-per-kanaal textarea { min-height: 120px; }
+.twee-kolommen.profiel { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .twee-kolommen.profiel { grid-template-columns: 1fr; } }

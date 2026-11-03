@@ -241,3 +241,33 @@ test('rollen heten Chefkes, Social media manager, Branding en Stage', async () =
   const roles = (await admin('GET', '/api/meta')).body.roles.map((r) => r.label);
   assert.deepEqual(roles, ['Chefkes', 'Social media manager', 'Branding', 'Stage']);
 });
+
+test('post op meerdere kanalen tegelijk, met eigen tekst per kanaal', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Batch Test', channels: ['instagram', 'facebook', 'linkedin'] })).body;
+  const res = await admin('POST', `/api/clients/${c.id}/calendar/batch`, {
+    date: '2026-12-10', time: '09:00', topic: 'Open dag', content_pillar: 'Buurt',
+    posts: [{ channel: 'instagram', body: 'Kort ✨' }, { channel: 'linkedin', body: 'Zakelijke tekst' }],
+  });
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.body.items.map((i) => [i.channel, i.body, i.content_pillar]), [['instagram', 'Kort ✨', 'Buurt'], ['linkedin', 'Zakelijke tekst', 'Buurt']]);
+
+  const clash = await admin('POST', `/api/clients/${c.id}/calendar/batch`, { date: '2026-12-10', posts: [{ channel: 'facebook', body: 'x' }, { channel: 'linkedin', body: 'y' }] });
+  assert.equal(clash.status, 409);
+  assert.deepEqual(clash.body.takenChannels, ['linkedin']);
+  const cal = (await admin('GET', `/api/clients/${c.id}/calendar?from=2026-12-10&to=2026-12-10`)).body.items;
+  assert.equal(cal.length, 2, 'bij een conflict wordt niets aangemaakt');
+});
+
+test('rechten per rol aanvinken; chefkes houden teambeheer', async () => {
+  const meta = (await admin('GET', '/api/meta')).body;
+  assert.ok(meta.permissions.updateStatus.includes('vormgever'));
+  // Branding mag voortaan ook content bewerken
+  const next = { ...meta.permissions, editContent: [...meta.permissions.editContent, 'vormgever'], manageUsers: [] };
+  const saved = (await admin('PUT', '/api/permissions', { permissions: next })).body.permissions;
+  assert.deepEqual(saved.manageUsers, ['admin'], 'chefkes kunnen zichzelf niet buitensluiten');
+  const item = (await designer('GET', `/api/clients/${clientId}/calendar?from=2026-12-01&to=2026-12-31`)).body.items[0];
+  assert.equal((await designer('PATCH', `/api/calendar/${item.id}`, { body: 'Nu wel' })).status, 200);
+  assert.equal((await designer('PUT', '/api/permissions', { permissions: next })).status, 403);
+  await admin('PUT', '/api/permissions', { permissions: meta.permissions });
+  assert.equal((await designer('PATCH', `/api/calendar/${item.id}`, { body: 'Weer niet' })).status, 403);
+});

@@ -41,13 +41,23 @@ export const ROLES = [
 ];
 export const ROLE_KEYS = ROLES.map((r) => r.key);
 
-// Wie mag wat. Goedkeuren van AI-planningen: alleen manager en beheerder.
+// Standaardrechten per rol. Chefkes kunnen dit aanpassen in Team en rechten; de actuele rechten staan in de database.
 export const CAN = {
   manageUsers: ['admin'],
   manageClients: ['admin', 'social_media_manager'],
   managePlans: ['admin', 'social_media_manager'],
   approvePlans: ['admin', 'social_media_manager'],
   editContent: ['admin', 'social_media_manager', 'medewerker'],
-  // Vormgever: bekijken, kopiëren, downloaden, status en interne opmerkingen bijwerken.
   updateStatus: ['admin', 'social_media_manager', 'medewerker', 'vormgever'],
 };
+
+// Omschrijvingen voor het rechtenoverzicht, in de volgorde waarin ze worden getoond.
+export const PERMISSIONS = [
+  { key: 'updateStatus', label: 'Status en interne opmerkingen wijzigen', description: 'Bijvoorbeeld een post op Volledig ingepland zetten.' },
+  { key: 'editContent', label: 'Posts, teksten, beeld en klantinput bewerken', description: 'Posts toevoegen en aanpassen, beeld uploaden, klantinput toevoegen.' },
+  { key: 'managePlans', label: 'Conceptplanningen maken en aanpassen', description: 'Voorstellen laten maken, onderwerpen en datums wijzigen.' },
+  { key: 'approvePlans', label: 'Planningen goedkeuren en in de kalender zetten', description: 'De laatste stap voordat een AI-planning in de kalender komt.' },
+  { key: 'manageClients', label: 'Klanten beheren', description: 'Toevoegen, inrichten, hernoemen, archiveren en verwijderen.' },
+  { key: 'manageUsers', label: 'Team, accounts en rechten beheren', description: 'Chefkes houden dit recht altijd, zodat niemand zichzelf buitensluit.' },
+];
+export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);

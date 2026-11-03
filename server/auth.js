@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { newId } from './db.js';
-import { CAN } from './constants.js';
+import { CAN, PERMISSION_KEYS, ROLE_KEYS } from './constants.js';
 
 const SESSION_DAYS = 14;
 export const COOKIE = 'jcs_sessie';
@@ -63,7 +63,39 @@ export function requireLogin(req, res, next) {
   next();
 }
 
-export const can = (user, permission) => Boolean(user && CAN[permission].includes(user.role));
+// Actuele rechten per rol, geladen uit de database (standaard: CAN).
+let permissions = structuredClone(CAN);
+
+export function loadPermissions(db) {
+  const rows = db.prepare('SELECT permission, role FROM role_permissions').all();
+  if (!rows.length) {
+    savePermissions(db, CAN);
+    return permissions;
+  }
+  permissions = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, rows.filter((r) => r.permission === p).map((r) => r.role)]));
+  return permissions;
+}
+
+/** Slaat rechten op. Chefkes (admin) houden altijd het recht om team en rechten te beheren. */
+export function savePermissions(db, next) {
+  const clean = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, [...new Set((next[p] ?? []).filter((r) => ROLE_KEYS.includes(r)))]]));
+  if (!clean.manageUsers.includes('admin')) clean.manageUsers.push('admin');
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM role_permissions').run();
+    const insert = db.prepare('INSERT INTO role_permissions (permission, role) VALUES (?, ?)');
+    for (const [p, roles] of Object.entries(clean)) for (const r of roles) insert.run(p, r);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  permissions = clean;
+  return clean;
+}
+
+export const currentPermissions = () => permissions;
+export const can = (user, permission) => Boolean(user && permissions[permission]?.includes(user.role));
 
 export function requirePermission(permission) {
   return (req, res, next) => {

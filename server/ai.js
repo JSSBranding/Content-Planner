@@ -93,12 +93,12 @@ function clientContext(client) {
     `Over de klant: ${redact(client.context) || '(niet ingevuld)'}`,
     `Doelgroep: ${redact(client.target_audience) || '(niet ingevuld)'}`,
     client.website ? `Website: ${client.website}` : '',
-    `Strategie: ${redact(client.strategy) || '(niet ingevuld)'}`,
+    `Doelen op social media: ${redact(client.strategy) || '(niet ingevuld)'}`,
     `Tone of voice: ${redact(client.tone_of_voice) || '(niet ingevuld)'}`,
     `Contentpijlers: ${client.content_pillars.join(', ') || '(geen)'}`,
     `Kanalen: ${client.channels.map(channelLabel).join(', ')}`,
     `Afgesproken frequentie: ${client.posts_per_week} posts per week`,
-    `AI-klantgeheugen (eerdere afspraken en lessen):\n${redact(client.ai_memory) || '(leeg)'}`,
+    `Afspraken en aandachtspunten:\n${redact(client.ai_memory) || '(leeg)'}`,
   ].filter(Boolean).join('\n');
 }
 
