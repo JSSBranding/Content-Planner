@@ -20,6 +20,22 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   PRIMARY KEY (permission, role)
 );
 
+-- Wat een account per klant en onderdeel (kalender, planning, beeld) het laatst heeft bekeken; voor de bolletjes.
+CREATE TABLE IF NOT EXISTS seen (
+  user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  section   TEXT NOT NULL,
+  seen_at   TEXT NOT NULL,
+  PRIMARY KEY (user_id, client_id, section)
+);
+
+-- Nieuwe posts die een account in de kalender in beeld heeft gehad.
+CREATE TABLE IF NOT EXISTS seen_items (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES calendar_items(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token      TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -133,7 +149,8 @@ CREATE TABLE IF NOT EXISTS calendar_items (
                   CHECK (status IN ('tekst_gereed', 'beeld_gereed_tekst_ontbreekt', 'gereed_voor_inplannen',
                                     'volledig_ingepland', 'advertising_gereed', 'advertising_ingepland',
                                     'placeholder_actie_nodig')),
-  assignee_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+  assignee_id     TEXT REFERENCES users(id) ON DELETE SET NULL,   -- vervangen door assignee (vrije naam)
+  assignee        TEXT NOT NULL DEFAULT '',          -- verantwoordelijke: vrije naam, accounts zijn per rol
   plan_id         TEXT REFERENCES content_plans(id) ON DELETE SET NULL,
   created_by      TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),

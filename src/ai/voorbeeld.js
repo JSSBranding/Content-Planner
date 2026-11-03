@@ -16,7 +16,10 @@ export function datesBetween(start, end) {
 // Vaste weekdagen volgens de frequentie, onderwerpen uit klantinput en anders uit de pijlers.
 export function examplePlan({ client, periodStart, periodEnd, inputs, media, note }) {
   const pattern = WEEKDAY_PATTERNS[Math.min(7, Math.max(1, client.posts_per_week || 3))];
-  const days = datesBetween(periodStart, periodEnd).filter((d) => pattern.includes(new Date(`${d}T00:00:00Z`).getUTCDay()));
+  const all = datesBetween(periodStart, periodEnd);
+  let days = all.filter((d) => pattern.includes(new Date(`${d}T00:00:00Z`).getUTCDay()));
+  // Korte periode (zoals één dag) zonder vaste postdag: plan dan op de eerste dag.
+  if (!days.length) days = all.slice(0, 1);
   const pillars = client.content_pillars.length ? client.content_pillars : [null];
   const mediaPool = [...media].sort((a, b) => a.times_used - b.times_used);
   const items = days.map((date, i) => {

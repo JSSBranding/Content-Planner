@@ -13,8 +13,8 @@ const scrollMemory = new Map();
 export async function calendarView({ clientId, tab, query, rerender }) {
   const month = /^\d{4}-\d{2}$/.test(query.get('maand') ?? '') ? query.get('maand') : isoDate(new Date()).slice(0, 7);
   const { from, to } = monthBounds(month);
-  const [{ client, head }, cal, users] = await Promise.all([
-    clientHeader(clientId, tab), api.get(`/clients/${clientId}/calendar?from=${from}&to=${to}`), api.get('/users'),
+  const [{ client, head }, cal] = await Promise.all([
+    clientHeader(clientId, tab), api.get(`/clients/${clientId}/calendar?from=${from}&to=${to}`),
   ]);
   const statusFilter = query.get('status') ?? '';
   const today = isoDate(new Date());
@@ -92,6 +92,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         title: statusLabel(item.status), onclick: () => openEditor(item),
       },
       h('div', { class: 'celkop' },
+        item.is_new ? h('span', { class: 'nieuw-bol', title: 'Nieuw toegevoegd door een ander account' }) : null,
         h('span', { class: 'tijd' }, item.suggested_time ?? ''),
         item.content_pillar ? h('span', { class: 'pijler', title: 'Contentpijler' }, item.content_pillar) : null,
         h('span', { class: 'rechts' },
@@ -143,6 +144,9 @@ export async function calendarView({ clientId, tab, query, rerender }) {
   // Na het tonen: terug naar de vorige scrollpositie, of anders naar vandaag.
   setTimeout(() => {
     if (!wrap.isConnected) return;
+    // Nieuwe posts in deze maand zijn nu in beeld geweest; het bolletje blijft tot de volgende keer laden zichtbaar.
+    const newIds = items.filter((i) => i.is_new).map((i) => i.id);
+    if (newIds.length) window.dispatchEvent(new CustomEvent('jcs:posts-bekeken', { detail: newIds }));
     if (scrollMemory.has(memoryKey)) wrap.scrollTop = scrollMemory.get(memoryKey);
     else {
       const row = table.querySelector('tr.vandaag');
@@ -184,8 +188,9 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const pillarOptions = [...new Set([...client.content_pillars, item.content_pillar].filter(Boolean))];
     const pillar = h('select', { value: item.content_pillar ?? '', disabled: !contentEditable, onchange: markDirty },
       h('option', { value: '' }, 'Geen pijler'), pillarOptions.map((p) => h('option', { value: p }, p)));
-    const assignee = h('select', { value: item.assignee_id ?? '', disabled: !contentEditable, onchange: markDirty },
-      h('option', { value: '' }, 'Niemand'), users.map((u) => h('option', { value: u.id }, u.name)));
+    // Verantwoordelijke is een vrije naam (accounts zijn per rol); eerder gebruikte namen worden voorgesteld.
+    const assignee = h('input', { type: 'text', list: 'verantwoordelijken', value: item.assignee_name ?? '', disabled: !contentEditable, oninput: markDirty, placeholder: 'Naam' });
+    const assigneeList = h('datalist', { id: 'verantwoordelijken' }, (cal.assignees ?? []).map((n) => h('option', { value: n })));
     const topic = h('input', { type: 'text', value: item.topic, disabled: !contentEditable, oninput: markDirty, placeholder: 'Waar gaat deze post over?' });
     const counter = h('span', { class: 'zacht' });
     const body = h('textarea', { id: 'celtekst', class: 'groot-tekstvak', value: item.body, disabled: !contentEditable, placeholder: 'Tekst voor deze post', oninput: () => { markDirty(); count(); } });
@@ -194,8 +199,8 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const source = h('textarea', { rows: 3, value: item.source_info, disabled: !contentEditable, oninput: markDirty });
 
     // Nieuwe post: kanalen aanvinken, één tekst voor alle kanalen of per kanaal een eigen tekst.
-    const startChannels = start.channels ?? (start.channel ? [start.channel] : channels);
-    const channelBoxes = channels.map((ch) => h('label', {}, h('input', { type: 'checkbox', value: ch, checked: startChannels.includes(ch), onchange: () => { markDirty(); drawPerChannel(); } }), channelLabel(ch)));
+    const startChannels = start.channels ?? (start.channel ? [start.channel] : client.channels);
+    const channelBoxes = meta.channels.map((c) => c.key).map((ch) => h('label', {}, h('input', { type: 'checkbox', value: ch, checked: startChannels.includes(ch), onchange: () => { markDirty(); drawPerChannel(); } }), channelLabel(ch)));
     const chosenChannels = () => channelBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.value);
     const perChannelToggle = h('input', { type: 'checkbox', onchange: () => drawPerChannel(true) });
     const perChannelTexts = {};
@@ -247,7 +252,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       if (contentEditable) {
         Object.assign(payload, {
           publish_date: date.value, suggested_time: time.value || null, channel: channel.value, topic: topic.value, content_pillar: pillar.value,
-          body: body.value, source_info: source.value, assignee_id: assignee.value || null, media: mediaList.map((m) => m.id),
+          body: body.value, source_info: source.value, assignee: assignee.value.trim(), media: mediaList.map((m) => m.id),
         });
       }
       try {
@@ -359,7 +364,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         ] : null,
         h('button', { class: 'knop kaal icoonknop', 'aria-label': 'Sluiten', title: 'Sluiten (Esc)', onclick: () => tryClose() }, icon('sluit'))),
       h('div', { class: 'paneel-inhoud' },
-        h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee)),
+        h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee), assigneeList),
         isNew ? h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes),
           h('label', { class: 'vinkje klein-vinkje', style: { marginTop: '10px' } }, perChannelToggle, 'Andere tekst per kanaal')) : null,
         perChannelHost,
@@ -438,6 +443,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       const result = await modal({
         title: 'Excel-import controleren', width: '640px',
         body: [
+          h('p', { class: 'zacht' }, 'Zo zet je een bestaande Excel-planning over, of voeg je eerdere posts toe. De AI gebruikt eerdere posts als voorbeeld voor stijl en toon van nieuwe teksten.'),
           h('p', {}, `${fresh} nieuwe post${fresh === 1 ? '' : 's'} worden toegevoegd.`),
           preview.errors.length ? h('div', { class: 'melding let-op' }, h('div', {}, h('strong', {}, 'Deze regels worden overgeslagen'), h('ul', { style: { margin: '6px 0 0', paddingLeft: '18px' } }, preview.errors.map((e) => h('li', {}, e))))) : null,
           existing.length ? [
@@ -468,12 +474,12 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     class: 'knop', type: 'button',
     onclick: (e) => openMenu(e.currentTarget, [
       { label: `${fmtMonth(from)} exporteren`, icon: 'download', action: () => downloadUrl(`/api/clients/${clientId}/export.xlsx?from=${from}&to=${to}`) },
-      ...(can('editContent') ? [{ label: 'Excel-bestand importeren', icon: 'upload', action: importExcel }] : []),
+      ...(can('editContent') ? [{ label: 'Bestaande planning of eerdere posts importeren', icon: 'upload', action: importExcel }] : []),
     ]),
   }, icon('excel', { size: 16 }), 'Excel');
 
   const addButton = can('editContent')
-    ? h('button', { class: 'knop primair', onclick: () => openEditor({ publish_date: today >= from && today <= to ? today : from, channel: channels[0], channels }) }, icon('plus', { size: 16 }), 'Post toevoegen')
+    ? h('button', { class: 'knop primair', onclick: () => openEditor({ publish_date: today >= from && today <= to ? today : from, channel: channels[0], channels: client.channels }) }, icon('plus', { size: 16 }), 'Post toevoegen')
     : null;
 
   return page(head([excelButton, addButton]),

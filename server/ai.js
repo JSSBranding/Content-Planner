@@ -135,7 +135,7 @@ const PLAN_SCHEMA = {
  * Stelt een conceptplanning voor. Geeft { items, source, note } terug; items hebben de vorm van
  * src/planning/plan.js ({ date, time, topic, channels, pillar, clientInputId, media, rationale }).
  */
-export async function proposePlan({ client, periodStart, periodEnd, inputs, media, occupied, wishes, previous }) {
+export async function proposePlan({ client, periodStart, periodEnd, inputs, media, occupied, wishes, previous, recentTopics = [] }) {
   const allowedMedia = media.filter(mediaAllowedForAi);
   if (!aiAvailable()) {
     return { ...examplePlan({ client, periodStart, periodEnd, inputs, media: allowedMedia }), source: 'voorbeeld' };
@@ -150,6 +150,7 @@ export async function proposePlan({ client, periodStart, periodEnd, inputs, medi
     `\nBeschikbaar beeldmateriaal (id — soort — bestandsnaam — beschrijving — tags — eerder gebruikt):`,
     allowedMedia.length ? allowedMedia.map((m) => `- ${m.id} — ${m.kind} — ${m.filename} — ${redact(m.description) || '-'} — ${m.tags.join(', ') || '-'} — ${m.times_used}x`).join('\n') : '(geen beeld beschikbaar)',
     `\nAl bezet in de kalender (datum + kanaal), niet dubbel inplannen:\n${occupied.map((o) => `${o.publish_date} ${o.channel}`).join('\n') || '(niets)'}`,
+    recentTopics.length ? `\nRecent al geplaatste onderwerpen (niet herhalen):\n${recentTopics.map((t) => `- ${redact(t)}`).join('\n')}` : '',
     previous ? `\nHuidige conceptplanning die opnieuw verdeeld moet worden (behoud de onderwerpen tenzij de wensen anders zeggen):\n${JSON.stringify(previous)}` : '',
     wishes ? `\nWensen van de social media manager: ${redact(wishes)}` : '',
     `\nOpdracht: stel een evenwichtige contentplanning voor deze periode voor.
@@ -236,13 +237,14 @@ const CHANNEL_STYLE = {
 };
 
 /** Schrijft per post en per kanaal een tekst. posts: [{ topic, channels, pillar, input, media }]. */
-export async function writeTexts({ client, posts }) {
+export async function writeTexts({ client, posts, examples = [] }) {
   if (!aiAvailable()) return posts.map((p) => exampleTexts(client, p));
 
   const prompt = [
     clientContext(client),
     `\nSchrijf voor elke onderstaande post een aparte tekst per kanaal. Stijl per kanaal:`,
     ...client.channels.map((c) => `- ${c}: ${CHANNEL_STYLE[c] ?? 'passend bij het kanaal'}`),
+    examples.length ? `\nEerdere posts van deze klant (sluit aan bij deze stijl en toon, kopieer ze niet):\n${examples.map((e) => `[${e.channel}] ${redact(e.body).slice(0, 600)}`).join('\n---\n')}` : '',
     `\nDe tekst wordt naast originele klantfoto's of -video's geplaatst; beschrijf het beeld niet letterlijk maar sluit erop aan.`,
     `Gebruik alleen feiten uit de klantinput en strategie. Verzin geen prijzen, data of beloftes.`,
     `\nPosts:`,

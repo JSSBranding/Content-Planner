@@ -282,3 +282,45 @@ test('rechten zijn logisch: status voor iedereen, afhankelijke rechten komen mee
   assert.ok(saved.managePlans.includes('medewerker') && saved.editContent.includes('medewerker'), 'goedkeuren neemt plannen en bewerken mee');
   await admin('PUT', '/api/permissions', { permissions: meta.permissions });
 });
+
+test('verantwoordelijke is een vrije naam, met voorstellen', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Assignee Test', channels: ['instagram'] })).body;
+  const post = (await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2026-12-02', channel: 'instagram', body: 'x', assignee: 'Lotte' })).body;
+  assert.equal(post.assignee_name, 'Lotte');
+  assert.equal((await admin('PATCH', `/api/calendar/${post.id}`, { assignee: 'Mark' })).body.assignee_name, 'Mark');
+  const cal = (await admin('GET', `/api/clients/${c.id}/calendar?from=2026-12-01&to=2026-12-31`)).body;
+  assert.ok(cal.assignees.includes('Mark'));
+});
+
+test('bolletje: nieuw toegevoegd door een ander account, weg na bekijken', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Nieuws Test', channels: ['instagram'] })).body;
+  await new Promise((r) => setTimeout(r, 1100)); // tijden zijn op de seconde nauwkeurig
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2026-12-03', channel: 'instagram', body: 'Van de beheerder' });
+  await admin('POST', `/api/clients/${c.id}/inputs`, { body: 'Nieuwe input' });
+  const forDesigner = (await designer('GET', '/api/clients')).body.find((x) => x.id === c.id);
+  assert.deepEqual(forDesigner.news, { kalender: 1, planning: 1, media: 0 });
+  const forAdmin = (await admin('GET', '/api/clients')).body.find((x) => x.id === c.id);
+  assert.deepEqual(forAdmin.news, { kalender: 0, planning: 0, media: 0 }, 'eigen toevoegingen tellen niet');
+  const cal = (await designer('GET', `/api/clients/${c.id}/calendar?from=2026-12-01&to=2026-12-31`)).body;
+  assert.equal(cal.items[0].is_new, true);
+  await designer('POST', `/api/clients/${c.id}/seen`, { section: 'kalender', ids: [] });
+  assert.equal((await designer('GET', `/api/clients/${c.id}`)).body.news.kalender, 1, 'alleen een post in beeld telt als bekeken');
+  await designer('POST', `/api/clients/${c.id}/seen`, { section: 'kalender', ids: [cal.items[0].id] });
+  assert.equal((await designer('GET', `/api/clients/${c.id}`)).body.news.kalender, 0);
+  assert.equal((await designer('GET', `/api/clients/${c.id}/calendar?from=2026-12-01&to=2026-12-31`)).body.items[0].is_new, false);
+});
+
+test('klant dupliceren en planning voor één dag', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Origineel', channels: ['instagram', 'youtube'], content_pillars: ['Team'], posts_per_week: 2 })).body;
+  const copy = (await admin('POST', `/api/clients/${c.id}/duplicate`)).body;
+  assert.equal(copy.name, 'Origineel (kopie)');
+  assert.deepEqual(copy.channels, ['instagram', 'youtube']);
+  assert.equal((await admin('POST', `/api/clients/${c.id}/duplicate`)).body.name, 'Origineel (kopie 2)');
+  assert.equal((await designer('POST', `/api/clients/${c.id}/duplicate`)).status, 403);
+
+  // 2 december 2026 is een woensdag; bij 2 posts per week valt die buiten de vaste dagen, maar één dag kan altijd.
+  const plan = await admin('POST', `/api/clients/${c.id}/plans`, { periodStart: '2026-12-02', periodEnd: '2026-12-02' });
+  assert.equal(plan.status, 201);
+  assert.equal(plan.body.items.length, 1);
+  assert.equal(plan.body.items[0].date, '2026-12-02');
+});

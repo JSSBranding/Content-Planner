@@ -76,9 +76,9 @@ export function createApp(db, { secureCookies = false } = {}) {
   function insertCalendarItem(data) {
     const id = newId();
     db.prepare(`INSERT INTO calendar_items (id, client_id, publish_date, suggested_time, channel, body, topic, content_pillar, source_info,
-        internal_notes, status, assignee_id, plan_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        internal_notes, status, assignee, plan_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, data.clientId, data.date, data.time ?? null, data.channel, data.body ?? '', data.topic ?? '', data.pillar || null,
-        data.sourceInfo ?? '', data.notes ?? '', data.status, data.assigneeId ?? null, data.planId ?? null, data.createdBy ?? null);
+        data.sourceInfo ?? '', data.notes ?? '', data.status, str(data.assignee, 100).trim(), data.planId ?? null, data.createdBy ?? null);
     setCalendarMedia(id, data.media ?? [], data.clientId);
     return id;
   }
@@ -132,6 +132,10 @@ export function createApp(db, { secureCookies = false } = {}) {
     });
   }
 
+  // Recente onderwerpen, zodat de AI niet steeds hetzelfde voorstelt.
+  const recentTopicsOf = (clientId) => db.prepare(`SELECT DISTINCT topic FROM calendar_items WHERE client_id = ? AND topic <> ''
+    ORDER BY publish_date DESC LIMIT 20`).all(clientId).map((r) => r.topic);
+
   function planContext(client, plan) {
     const inputs = listInputs(db, client.id);
     const occupied = db.prepare('SELECT publish_date, channel FROM calendar_items WHERE client_id = ? AND publish_date BETWEEN ? AND ?')
@@ -147,7 +151,10 @@ export function createApp(db, { secureCookies = false } = {}) {
       input: it.clientInputId ? inputsById.get(it.clientInputId) : null,
       media: (it.media ?? []).map((id) => mediaById.get(id)).filter(Boolean),
     }));
-    return writeTexts({ client, posts });
+    // Eerdere posts (ook geïmporteerd uit Excel) gaan mee als voorbeeld van stijl en toon.
+    const examples = db.prepare(`SELECT channel, body FROM calendar_items WHERE client_id = ? AND body <> ''
+      ORDER BY publish_date DESC LIMIT 8`).all(client.id);
+    return writeTexts({ client, posts, examples });
   }
 
   // Plaatst een goedgekeurde planning in de kalender. Conflicten moeten expliciet zijn opgelost.
@@ -304,6 +311,28 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.json({ ok: true });
   });
 
+  // ---------- Nieuw sinds je laatste bezoek (bolletjes) ----------
+
+  const SECTIONS = ['kalender', 'planning', 'media'];
+  function seenAt(user, clientId, section) {
+    return db.prepare('SELECT seen_at FROM seen WHERE user_id = ? AND client_id = ? AND section = ?').get(user.id, clientId, section)?.seen_at
+      ?? db.prepare('SELECT created_at FROM users WHERE id = ?').get(user.id).created_at;
+  }
+  // Nieuwe posts tellen tot je ze in de kalender in beeld hebt gehad (per post, niet per bezoek).
+  const UNSEEN_POSTS = `FROM calendar_items ci WHERE ci.client_id = ? AND ci.created_by <> ?
+    AND ci.created_at > (SELECT created_at FROM users WHERE id = ?)
+    AND NOT EXISTS (SELECT 1 FROM seen_items s WHERE s.user_id = ? AND s.item_id = ci.id)`;
+  // Wat andere accounts hebben toegevoegd en jij nog niet hebt gezien.
+  function newsFor(user, clientId) {
+    const n = (sql, section) => db.prepare(sql).get(clientId, user.id, seenAt(user, clientId, section)).n;
+    return {
+      kalender: db.prepare(`SELECT COUNT(*) AS n ${UNSEEN_POSTS}`).get(clientId, user.id, user.id, user.id).n,
+      planning: n('SELECT COUNT(*) AS n FROM client_inputs WHERE client_id = ? AND created_by <> ? AND created_at > ?', 'planning')
+        + n('SELECT COUNT(*) AS n FROM content_plans WHERE client_id = ? AND created_by <> ? AND created_at > ?', 'planning'),
+      media: n('SELECT COUNT(*) AS n FROM media_assets WHERE client_id = ? AND uploaded_by <> ? AND uploaded_at > ?', 'media'),
+    };
+  }
+
   // ---------- Klanten ----------
 
   function clientFields(body, current = {}) {
@@ -331,7 +360,7 @@ export function createApp(db, { secureCookies = false } = {}) {
         (SELECT COUNT(*) FROM content_plans p WHERE p.client_id = c.id AND p.status IN ('concept','in_controle','aanpassen','goedgekeurd')) AS open_plans,
         (SELECT COUNT(*) FROM calendar_items ci WHERE ci.client_id = c.id AND ci.publish_date >= ? AND ci.status = 'placeholder_actie_nodig') AS action_needed
       FROM clients c ORDER BY c.archived, c.name COLLATE NOCASE`).all(today);
-    res.json(rows.map(mapClient));
+    res.json(rows.map((r) => ({ ...mapClient(r), news: newsFor(req.user, r.id) })));
   });
 
   const nameTaken = (name, exceptId = '') =>
@@ -354,7 +383,34 @@ export function createApp(db, { secureCookies = false } = {}) {
       ...client,
       open_inputs: count('SELECT COUNT(*) AS n FROM client_inputs WHERE client_id = ? AND processed = 0'),
       open_plans: count("SELECT COUNT(*) AS n FROM content_plans WHERE client_id = ? AND status IN ('concept','in_controle','aanpassen','goedgekeurd')"),
+      news: newsFor(req.user, client.id),
     });
+  });
+
+  api.post('/clients/:id/seen', (req, res) => {
+    const client = clientOr404(req.params.id);
+    const section = req.body?.section;
+    if (!SECTIONS.includes(section)) fail(400, 'Onbekend onderdeel.');
+    if (section === 'kalender') {
+      const insert = db.prepare('INSERT OR IGNORE INTO seen_items (user_id, item_id) SELECT ?, id FROM calendar_items WHERE id = ? AND client_id = ?');
+      for (const id of (Array.isArray(req.body?.ids) ? req.body.ids : [])) insert.run(req.user.id, str(id, 64), client.id);
+      return res.json({ ok: true });
+    }
+    db.prepare(`INSERT INTO seen (user_id, client_id, section, seen_at) VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT (user_id, client_id, section) DO UPDATE SET seen_at = excluded.seen_at`).run(req.user.id, client.id, section);
+    res.json({ ok: true });
+  });
+
+  // Klant dupliceren: profiel, kanalen en pijlers, zonder posts, planningen en beeld.
+  api.post('/clients/:id/duplicate', requirePermission('manageClients'), (req, res) => {
+    const c = clientOr404(req.params.id);
+    let name = `${c.name} (kopie)`;
+    for (let i = 2; nameTaken(name); i++) name = `${c.name} (kopie ${i})`;
+    const id = newId();
+    db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, context,
+      target_audience, website, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, c.strategy, c.tone_of_voice,
+      json.str(c.content_pillars), json.str(c.channels), c.posts_per_week, c.ai_memory, c.context ?? '', c.target_audience ?? '', c.website ?? '', c.contact ?? '');
+    res.status(201).json(getClient(db, id));
   });
 
   // Meerdere klanten tegelijk toevoegen (één naam per regel). Bestaande namen worden overgeslagen.
@@ -545,7 +601,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     if ((Date.parse(periodEnd) - Date.parse(periodStart)) / 86400_000 > 92) fail(400, 'Een planning beslaat maximaal drie maanden.');
     const ctx = planContext(client, { periodStart, periodEnd });
     const inputs = ctx.inputs.filter((i) => !i.processed);
-    const proposal = await proposePlan({ client, periodStart, periodEnd, inputs, media: ctx.media, occupied: ctx.occupied, wishes: str(wishes, 2000) });
+    const proposal = await proposePlan({ client, periodStart, periodEnd, inputs, media: ctx.media, occupied: ctx.occupied, wishes: str(wishes, 2000), recentTopics: recentTopicsOf(client.id) });
     const id = newId();
     db.prepare('INSERT INTO content_plans (id, client_id, period_start, period_end, ai_source, ai_note, wishes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(id, client.id, periodStart, periodEnd, proposal.source, proposal.note, str(wishes, 2000), req.user.id);
@@ -597,7 +653,7 @@ export function createApp(db, { secureCookies = false } = {}) {
       ? plan.items.map(({ date, time, topic, channels, pillar, clientInputId, media }) => ({ date, time, topic, channels, pillar, client_input_id: clientInputId, media_ids: media }))
       : null;
     const inputs = mode === 'redistribute' ? ctx.inputs : ctx.inputs.filter((i) => !i.processed);
-    const proposal = await proposePlan({ client, periodStart: plan.periodStart, periodEnd: plan.periodEnd, inputs, media: ctx.media, occupied: ctx.occupied, wishes, previous });
+    const proposal = await proposePlan({ client, periodStart: plan.periodStart, periodEnd: plan.periodEnd, inputs, media: ctx.media, occupied: ctx.occupied, wishes, previous, recentTopics: recentTopicsOf(client.id) });
     const next = mode === 'redistribute' ? applyAiRedistribution(plan, proposal.items) : regenerate(plan, proposal.items);
     return planWithConflicts(persistPlan({ ...next, id: plan.id, aiNote: proposal.note, aiSource: proposal.source, wishes, textsReady: false }));
   }
@@ -678,7 +734,10 @@ export function createApp(db, { secureCookies = false } = {}) {
   api.get('/clients/:id/calendar', (req, res) => {
     clientOr404(req.params.id);
     const { from, to } = monthRange(req.query);
-    res.json({ from, to, items: listCalendar(db, req.params.id, from, to) });
+    const unseen = new Set(db.prepare(`SELECT ci.id ${UNSEEN_POSTS}`).all(req.params.id, req.user.id, req.user.id, req.user.id).map((r) => r.id));
+    const items = listCalendar(db, req.params.id, from, to).map((i) => ({ ...i, is_new: unseen.has(i.id) }));
+    const assignees = db.prepare("SELECT DISTINCT assignee FROM calendar_items WHERE assignee <> '' ORDER BY assignee COLLATE NOCASE").all().map((r) => r.assignee);
+    res.json({ from, to, items, assignees });
   });
 
   // Handmatig aangemaakte posts worden direct opgeslagen.
@@ -694,7 +753,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     const id = insertCalendarItem({
       clientId: client.id, date: b.date, time: optTime(b.time), channel: b.channel, body: str(b.body), topic: str(b.topic, 300),
       pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
-      assigneeId: b.assignee_id || null, media, createdBy: req.user.id,
+      assignee: b.assignee, media, createdBy: req.user.id,
     });
     res.status(201).json(getCalendarItem(db, id));
   });
@@ -716,7 +775,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     const ids = transaction(db, () => posts.map((p) => insertCalendarItem({
       clientId: client.id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
       pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
-      status: b.status ?? initialStatus({ body: p.body, media }), assigneeId: b.assignee_id || null, media, createdBy: req.user.id,
+      status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media, createdBy: req.user.id,
     })));
     res.status(201).json({ items: ids.map((id) => getCalendarItem(db, id)) });
   });
@@ -732,7 +791,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     if (!can(req.user, 'updateStatus') && !can(req.user, 'editContent')) fail(403, 'Je hebt geen rechten voor deze actie.');
     const item = calendarItemOr404(req.params.id);
     const b = req.body ?? {};
-    const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
+    const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee', 'media'];
     if (!can(req.user, 'editContent') && contentFields.some((f) => f in b)) {
       fail(403, 'Met jouw rechten kun je alleen de status en interne opmerkingen aanpassen.');
     }
@@ -749,7 +808,7 @@ export function createApp(db, { secureCookies = false } = {}) {
       source_info: 'source_info' in b ? str(b.source_info) : item.source_info,
       internal_notes: 'internal_notes' in b ? str(b.internal_notes) : item.internal_notes,
       status: b.status ?? item.status,
-      assignee_id: 'assignee_id' in b ? b.assignee_id || null : item.assignee_id,
+      assignee: 'assignee' in b ? str(b.assignee, 100).trim() : item.assignee,
     };
     if (next.publish_date !== item.publish_date || next.channel !== item.channel) {
       const taken = db.prepare('SELECT id FROM calendar_items WHERE client_id = ? AND publish_date = ? AND channel = ? AND id <> ?')
@@ -759,9 +818,9 @@ export function createApp(db, { secureCookies = false } = {}) {
     transaction(db, () => {
       saveVersion(item, req.user.id, str(b.reason, 200) || 'Bewerkt');
       db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, content_pillar = ?,
-          source_info = ?, internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
+          source_info = ?, internal_notes = ?, status = ?, assignee = ?, updated_at = datetime('now') WHERE id = ?`)
         .run(next.publish_date, next.suggested_time, next.channel, next.body, next.topic, next.content_pillar, next.source_info,
-          next.internal_notes, next.status, next.assignee_id, item.id);
+          next.internal_notes, next.status, next.assignee, item.id);
       if (Array.isArray(b.media)) setCalendarMedia(item.id, b.media, item.client_id);
     });
     res.json(getCalendarItem(db, item.id));
@@ -790,9 +849,9 @@ export function createApp(db, { secureCookies = false } = {}) {
     transaction(db, () => {
       saveVersion(item, req.user.id, `Vóór terugzetten naar versie van ${v.changed_at}`);
       db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, content_pillar = ?,
-          source_info = ?, internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
+          source_info = ?, internal_notes = ?, status = ?, assignee = ?, updated_at = datetime('now') WHERE id = ?`)
         .run(s.publish_date, s.suggested_time, s.channel, s.body, s.topic, s.content_pillar ?? null, s.source_info, s.internal_notes,
-          s.status, s.assignee_id ?? null, item.id);
+          s.status, s.assignee ?? s.assignee_name ?? '', item.id);
       setCalendarMedia(item.id, s.media ?? [], item.client_id);
     });
     res.json(getCalendarItem(db, item.id));
@@ -857,7 +916,7 @@ export function createApp(db, { secureCookies = false } = {}) {
         const status = r.status ?? initialStatus({ body: r.body, media: [] });
         if (!r.exists) {
           insertCalendarItem({ clientId: client.id, date: r.date, time: r.time, channel: r.channel, body: r.body, topic: r.topic,
-            pillar: r.pillar, sourceInfo: r.source, notes: r.notes, status, createdBy: req.user.id });
+            pillar: r.pillar, sourceInfo: r.source, notes: r.notes, assignee: r.assignee, status, createdBy: req.user.id });
           created++;
         } else if (overwrite.has(r.key)) {
           const id = existing.get(r.key);

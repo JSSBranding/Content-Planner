@@ -1,6 +1,6 @@
 import {
   h, fill, icon, field, toast, showError, modal, confirmDialog, busy, mediaThumb, copyText, openMenu, page,
-  fmtDate, fmtLongDate, fmtDateTime, isoDate, monthBounds, shiftMonth, isoWeek, emptyState,
+  fmtDate, fmtLongDate, fmtDateTime, isoDate, monthBounds, shiftMonth, isoWeek, emptyState, addDays,
 } from '../ui.js';
 import { api, meta, can, channelLabel } from '../api.js';
 import { clientHeader } from './clients.js';
@@ -23,6 +23,23 @@ export async function plansView({ clientId, tab, rerender }) {
   const next = monthBounds(shiftMonth(isoDate(new Date()).slice(0, 7), 1));
   const start = h('input', { type: 'date', value: next.from, required: true });
   const end = h('input', { type: 'date', value: next.to, required: true });
+  // Periode: één dag, een week of een maand. Bij één dag is er maar één datumveld.
+  let mode = 'maand';
+  const endField = field('Tot en met', end);
+  const startLabel = h('span', {}, 'Van');
+  const periodButtons = h('div', { class: 'segment', role: 'group', 'aria-label': 'Periode' });
+  function setMode(m) {
+    mode = m;
+    if (m === 'dag') end.value = start.value;
+    if (m === 'week') end.value = addDays(start.value, 6);
+    if (m === 'maand') { const b = monthBounds(start.value.slice(0, 7)); start.value = b.from; end.value = b.to; }
+    endField.hidden = m === 'dag';
+    startLabel.textContent = m === 'dag' ? 'Datum' : 'Van';
+    fill(periodButtons, [['dag', 'Eén dag'], ['week', 'Week'], ['maand', 'Maand']].map(([k, l]) =>
+      h('button', { type: 'button', class: k === mode ? 'aan' : '', 'aria-pressed': String(k === mode), onclick: () => setMode(k) }, l)));
+  }
+  start.addEventListener('change', () => { if (mode === 'dag') end.value = start.value; if (mode === 'week') end.value = addDays(start.value, 6); });
+  setMode('maand');
   const wishes = h('textarea', { rows: 3, placeholder: 'Bijv. focus op kerst, geen posts in het weekend, LinkedIn maximaal één keer per week' });
   const openInputs = inputs.filter((i) => !i.processed).length;
 
@@ -49,7 +66,8 @@ export async function plansView({ clientId, tab, rerender }) {
     `Op basis van de strategie, ${client.posts_per_week} posts per week en `,
     openInputs ? `${openInputs} nieuwe klantinput.` : 'algemene content (er is geen nieuwe klantinput).',
     ' Je ziet eerst een voorstel; er komt niets in de kalender zonder jouw goedkeuring.'),
-  h('div', { class: 'rij' }, field('Van', start), field('Tot en met', end)),
+  h('div', { class: 'veld' }, h('label', {}, 'Periode'), periodButtons),
+  h('div', { class: 'rij' }, h('div', { class: 'veld' }, h('label', {}, startLabel), start), endField),
   field('Wensen voor deze periode', wishes),
   h('button', { class: 'knop primair', type: 'submit', style: { width: '100%' } }, icon('sparkle', { size: 16 }), 'Voorstel laten maken')) : null;
 

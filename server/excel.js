@@ -109,7 +109,7 @@ export async function parseCalendarWorkbook(buffer) {
   const col = (...names) => names.map((n) => headers[n.toLowerCase()]).find(Boolean);
   const c = {
     date: col('Datum'), time: col('Tijd (voorstel)', 'Tijd'), channel: col('Kanaal'), topic: col('Onderwerp'), pillar: col('Contentpijler', 'Pijler'),
-    body: col('Tekst'), status: col('Status'), source: col('Bron / klantinput', 'Bron'), notes: col('Interne opmerkingen', 'Opmerkingen'),
+    body: col('Tekst'), status: col('Status'), assignee: col('Verantwoordelijke'), source: col('Bron / klantinput', 'Bron'), notes: col('Interne opmerkingen', 'Opmerkingen'),
   };
   if (!c.date || !c.channel) return { rows: [], errors: ['Kolommen "Datum" en "Kanaal" zijn verplicht.'] };
 
@@ -125,7 +125,7 @@ export async function parseCalendarWorkbook(buffer) {
     if (!channel) return errors.push(`Rij ${n}: onbekend kanaal "${get('channel')}".`);
     rows.push({
       row: n, date, channel, time: normalizeTime(get('time')), topic: get('topic'), pillar: get('pillar'), body: get('body'),
-      status: find(CALENDAR_STATUSES, get('status')) ?? null, source: get('source'), notes: get('notes'),
+      status: find(CALENDAR_STATUSES, get('status')) ?? null, source: get('source'), notes: get('notes'), assignee: get('assignee'),
     });
   });
   return { rows, errors };

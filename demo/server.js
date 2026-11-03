@@ -9,7 +9,7 @@ import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v4';
+const STORE_KEY = 'jcs-demo-v5';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 4) return saved;
+    if (saved?.version === 5) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -86,7 +86,7 @@ const listInputs = (clientId) => state.inputs.filter((i) => i.client_id === clie
 function mapItem(item) {
   return {
     ...item,
-    assignee_name: userName(item.assignee_id),
+    assignee_name: item.assignee || userName(item.assignee_id),
     media: item.media.map((id) => state.media.find((m) => m.id === id)).filter(Boolean).map(mapMedia),
   };
 }
@@ -108,7 +108,7 @@ function insertItem(data) {
   const item = {
     id: newId(), client_id: data.clientId, publish_date: data.date, suggested_time: data.time ?? null, channel: data.channel,
     body: data.body ?? '', topic: data.topic ?? '', content_pillar: data.pillar || null, source_info: data.sourceInfo ?? '', internal_notes: data.notes ?? '',
-    status: data.status, assignee_id: data.assigneeId ?? null, plan_id: data.planId ?? null,
+    status: data.status, assignee: str(data.assignee, 100).trim(), assignee_id: null, plan_id: data.planId ?? null,
     created_by: currentUser().id, created_at: now(), updated_at: now(), media: [],
   };
   setMedia(item, data.media ?? []);
@@ -293,6 +293,40 @@ route('PATCH', '/users/:id', async ({ id }, b) => {
   return { ok: true };
 });
 
+// Nieuw sinds je laatste bezoek (bolletjes)
+const SECTIONS = ['kalender', 'planning', 'media'];
+const seenAt = (clientId, section) => state.seen[`${currentUser().id}|${clientId}|${section}`] ?? currentUser().created_at;
+const isUnseenPost = (i) => i.created_by !== currentUser().id && i.created_at > currentUser().created_at && !state.seenItems[`${currentUser().id}|${i.id}`];
+function newsFor(clientId) {
+  const me = currentUser().id;
+  const after = (section) => (x, by, at) => x.client_id === clientId && x[by] !== me && x[at] > seenAt(clientId, section);
+  return {
+    kalender: state.calendar.filter((i) => isUnseenPost(i) && i.client_id === clientId).length,
+    planning: state.inputs.filter((i) => after('planning')(i, 'created_by', 'created_at')).length
+      + state.plans.filter((p) => p.clientId === clientId && p.createdBy && p.createdBy !== me && p.createdAt > seenAt(clientId, 'planning')).length,
+    media: state.media.filter((m) => after('media')(m, 'uploaded_by', 'uploaded_at')).length,
+  };
+}
+route('POST', '/clients/:id/seen', ({ id }, b) => {
+  clientOr404(id);
+  if (!SECTIONS.includes(b?.section)) fail(400, 'Onbekend onderdeel.');
+  if (b.section === 'kalender') {
+    for (const itemId of b.ids ?? []) if (state.calendar.some((i) => i.id === itemId && i.client_id === id)) state.seenItems[`${currentUser().id}|${itemId}`] = true;
+    return { ok: true };
+  }
+  state.seen[`${currentUser().id}|${id}|${b.section}`] = now();
+  return { ok: true };
+});
+route('POST', '/clients/:id/duplicate', ({ id }) => {
+  need('manageClients');
+  const c = clientOr404(id);
+  let name = `${c.name} (kopie)`;
+  for (let i = 2; nameTaken(name); i++) name = `${c.name} (kopie ${i})`;
+  const copy = { ...structuredClone(c), id: newId(), name, archived: false, created_at: now() };
+  state.clients.push(copy);
+  return structuredClone(copy);
+});
+
 // Klanten
 const clientCounts = (c) => {
   const today = new Date().toISOString().slice(0, 10);
@@ -300,6 +334,7 @@ const clientCounts = (c) => {
     open_inputs: state.inputs.filter((i) => i.client_id === c.id && !i.processed).length,
     open_plans: state.plans.filter((p) => p.clientId === c.id && ['concept', 'in_controle', 'aanpassen', 'goedgekeurd'].includes(p.status)).length,
     action_needed: state.calendar.filter((i) => i.client_id === c.id && i.publish_date >= today && i.status === 'placeholder_actie_nodig').length,
+    news: newsFor(c.id),
   };
 };
 const nameTaken = (name, exceptId) => state.clients.some((c) => c.id !== exceptId && c.name.toLowerCase() === name.toLowerCase());
@@ -472,7 +507,7 @@ route('POST', '/clients/:id/plans', ({ id }, b) => {
   const plan = storePlan({
     ...createPlan({ clientId: id, items: proposal.items }), id: newId(), periodStart, periodEnd,
     reviewTextsFirst: false, textsReady: false, aiSource: 'voorbeeld', aiNote: proposal.note, wishes: str(b?.wishes, 2000),
-    addedToCalendarAt: null, createdAt: now(),
+    addedToCalendarAt: null, createdAt: now(), createdBy: currentUser().id,
   });
   return planOut(plan);
 });
@@ -557,8 +592,10 @@ route('GET', '/clients/:id/calendar', ({ id }, _, q) => {
   const from = isDate(q.get('from')) ? q.get('from') : `${new Date().toISOString().slice(0, 7)}-01`;
   const to = isDate(q.get('to')) ? q.get('to') : from;
   const items = state.calendar.filter((i) => i.client_id === id && i.publish_date >= from && i.publish_date <= to)
-    .sort((a, b) => a.publish_date.localeCompare(b.publish_date) || a.channel.localeCompare(b.channel)).map(mapItem);
-  return { from, to, items };
+    .sort((a, b) => a.publish_date.localeCompare(b.publish_date) || a.channel.localeCompare(b.channel)).map(mapItem)
+    .map((i) => ({ ...i, is_new: isUnseenPost(state.calendar.find((x) => x.id === i.id)) }));
+  const assignees = [...new Set(state.calendar.map((i) => i.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return { from, to, items, assignees };
 });
 route('POST', '/clients/:id/calendar', ({ id }, b) => {
   need('editContent');
@@ -572,7 +609,7 @@ route('POST', '/clients/:id/calendar', ({ id }, b) => {
   const item = insertItem({
     clientId: id, date: b.date, time: optTime(b.time), channel: b.channel, body: str(b.body), topic: str(b.topic, 300),
     pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
-    assigneeId: b.assignee_id || null, media,
+    assignee: b.assignee, media,
   });
   return mapItem(item);
 });
@@ -591,7 +628,7 @@ route('POST', '/clients/:id/calendar/batch', ({ id }, b) => {
   const items = posts.map((p) => insertItem({
     clientId: id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
     pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
-    status: b.status ?? initialStatus({ body: p.body, media }), assigneeId: b.assignee_id || null, media,
+    status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media,
   }));
   return { items: items.map(mapItem) };
 });
@@ -604,7 +641,7 @@ route('GET', '/calendar/:id', ({ id }) => {
 route('PATCH', '/calendar/:id', ({ id }, b) => {
   if (!can('updateStatus') && !can('editContent')) fail(403, 'Je hebt geen rechten voor deze actie.');
   const item = itemOr404(id);
-  const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
+  const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee', 'media'];
   if (!can('editContent') && contentFields.some((f) => f in (b ?? {}))) fail(403, 'Met jouw rechten kun je alleen de status en interne opmerkingen aanpassen.');
   if (b?.status && !CALENDAR_STATUS_KEYS.includes(b.status)) fail(400, 'Onbekende status.');
   if ('publish_date' in b && !isDate(b.publish_date)) fail(400, 'Ongeldige datum.');
@@ -624,7 +661,7 @@ route('PATCH', '/calendar/:id', ({ id }, b) => {
     source_info: 'source_info' in b ? str(b.source_info) : item.source_info,
     internal_notes: 'internal_notes' in b ? str(b.internal_notes) : item.internal_notes,
     status: b.status ?? item.status,
-    assignee_id: 'assignee_id' in b ? b.assignee_id || null : item.assignee_id,
+    assignee: 'assignee' in b ? str(b.assignee, 100).trim() : item.assignee,
     updated_at: now(),
   });
   if (Array.isArray(b.media)) setMedia(item, b.media);
@@ -650,7 +687,7 @@ route('POST', '/calendar/:id/versions/:vid/restore', ({ id, vid }) => {
   saveVersion(item, 'Vóór terugzetten naar een eerdere versie');
   Object.assign(item, {
     publish_date: s.publish_date, suggested_time: s.suggested_time, channel: s.channel, body: s.body, topic: s.topic,
-    content_pillar: s.content_pillar ?? null, source_info: s.source_info, internal_notes: s.internal_notes, status: s.status, assignee_id: s.assignee_id ?? null, updated_at: now(),
+    content_pillar: s.content_pillar ?? null, source_info: s.source_info, internal_notes: s.internal_notes, status: s.status, assignee: s.assignee ?? '', updated_at: now(),
   });
   setMedia(item, s.media ?? []);
   return mapItem(item);

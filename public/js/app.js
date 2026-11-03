@@ -58,6 +58,7 @@ function sidebar(clients, route) {
         ondblclick: (e) => { if (can('manageClients')) { e.preventDefault(); renameInline(c, name); } },
       },
       h('span', { class: 'initialen' }, initials(c.name)), name,
+      hasNews(c) ? h('span', { class: 'nieuw-bol', title: 'Nieuw toegevoegd door een ander account' }) : null,
       waiting ? h('span', { class: 'teller', title: `${waiting} conceptplanning(en) open` }, waiting) : null);
       const more = h('button', {
         type: 'button', class: 'zijmeer', 'aria-label': `Meer voor ${c.name}`, title: 'Meer',
@@ -140,7 +141,9 @@ function showWelcome() {
 
 // ---------- Klant snel beheren vanuit de zijbalk ----------
 
-function clientMenu(c, nameEl) {
+const hasNews = (c) => Boolean(c.news && (c.news.kalender || c.news.planning || c.news.media));
+
+export function clientMenu(c, nameEl) {
   const go = (path) => () => { location.hash = `#/klant/${c.id}/${path}`; };
   const items = [
     { label: 'Contentkalender', icon: 'kalender', action: go('kalender') },
@@ -150,7 +153,8 @@ function clientMenu(c, nameEl) {
   if (can('manageMedia')) items.push({ label: 'Beeld uploaden', icon: 'upload', action: go('media') });
   if (can('manageClients')) {
     items.push(
-      { label: 'Naam wijzigen', icon: 'bewerk', action: () => renameInline(c, nameEl) },
+      ...(nameEl ? [{ label: 'Naam wijzigen', icon: 'bewerk', action: () => renameInline(c, nameEl) }] : [{ label: 'Naam wijzigen', icon: 'bewerk', action: go('instellingen') }]),
+      { label: 'Dupliceren', icon: 'kopie', action: () => duplicateClient(c) },
       { label: c.archived ? 'Weer actief maken' : 'Archiveren', icon: 'slot', action: () => toggleArchive(c) },
       { label: 'Klant verwijderen', icon: 'prullenbak', action: () => confirmDeleteClient(c) },
     );
@@ -187,6 +191,16 @@ function renameInline(c, nameEl) {
   row.replaceChildren(input);
   input.focus();
   input.select();
+}
+
+async function duplicateClient(c) {
+  try {
+    const copy = await api.post(`/clients/${c.id}/duplicate`);
+    toast(`${copy.name} aangemaakt, met dezelfde instellingen en context`);
+    location.hash = `#/klant/${copy.id}/instellingen`;
+  } catch (err) {
+    showError(err);
+  }
 }
 
 async function toggleArchive(c) {
@@ -229,12 +243,26 @@ export async function render() {
     if (token !== renderToken) return;
     if (!renaming) root.querySelector('.zijbalk').replaceWith(sidebar(clients, route));
     fill(main, content);
+    markSeen(route, token);
     document.title = `${main.querySelector('h1')?.textContent ?? 'Overzicht'} | Jouw Content Studio`;
   } catch (err) {
     if (token !== renderToken) return;
     fill(main, h('div', { class: 'inhoud-vlak' }, h('div', { class: 'melding fout' }, icon('sluit'), err.message)));
     if (err.status !== 404) showError(err);
   }
+}
+
+// Een onderdeel van een klant openen telt als bekeken: de bolletjes verdwijnen daarna.
+// De kalender meldt zelf welke nieuwe posts in beeld waren (zie calendar.js).
+const SEEN_SECTION = { planning: 'planning', media: 'media' };
+async function markSeen(route, token, body) {
+  const section = body?.section ?? SEEN_SECTION[route.tab];
+  if (!route.params.clientId || !section) return;
+  try {
+    await api.post(`/clients/${route.params.clientId}/seen`, body ?? { section });
+    const clients = await api.get('/clients');
+    if (token === renderToken && !renaming) root.querySelector('.zijbalk').replaceWith(sidebar(clients, route));
+  } catch { /* niet belangrijk genoeg om te melden */ }
 }
 
 async function onLoggedIn() {
@@ -246,6 +274,11 @@ async function onLoggedIn() {
 
 window.addEventListener('hashchange', render);
 window.addEventListener('jcs:vernieuw', () => render());
+window.addEventListener('jcs:posts-bekeken', (e) => {
+  const [path] = (location.hash.slice(1) || '/').split('?');
+  const route = match(path);
+  if (route) markSeen(route, renderToken, { section: 'kalender', ids: e.detail });
+});
 window.addEventListener('jcs:uitgelogd', () => {
   if (!meta.user) return;
   meta.user = null;

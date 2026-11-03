@@ -1,4 +1,4 @@
-import { h, fill, icon, field, toast, showError, emptyState, pageHead, page, initials } from '../ui.js';
+import { h, fill, icon, field, toast, showError, emptyState, pageHead, page, initials, openMenu } from '../ui.js';
 import { api, can, meta, channelLabel } from '../api.js';
 import { clientForm } from './settings.js';
 
@@ -22,13 +22,23 @@ export async function clientsView({ query }) {
 
   const card = (c) => {
     const list = todos(c);
-    return h('a', { class: 'klantkaart', href: `#/klant/${c.id}/${c.channels.length ? 'kalender' : 'instellingen'}` },
+    const hasNews = c.news && (c.news.kalender || c.news.planning || c.news.media);
+    const more = h('button', {
+      type: 'button', class: 'knop kaal icoonknop klein kaartmeer', 'aria-label': `Meer voor ${c.name}`, title: 'Meer',
+      onclick: async (e) => {
+        const button = e.currentTarget; // na de await is currentTarget leeg
+        const { clientMenu } = await import('../app.js');
+        openMenu(button, clientMenu(c, null));
+      },
+    }, icon('meer', { size: 16 }));
+    return h('div', { class: 'kaarthouder' }, more, h('a', { class: 'klantkaart', href: `#/klant/${c.id}/${c.channels.length ? 'kalender' : 'instellingen'}` },
       h('div', { class: 'kop' }, h('span', { class: 'initialen' }, initials(c.name)),
         h('div', {}, h('h2', {}, c.name),
           h('div', { class: 'zacht' }, c.channels.length ? `${c.posts_per_week} posts per week op ${c.channels.map(channelLabel).join(', ')}` : 'Nog niet ingericht'))),
-      h('div', { class: 'todo' }, list.length
-        ? list.map((t) => h('div', {}, h('span', { class: 'stip' }), t))
-        : h('div', { class: 'rustig' }, 'Niets openstaand')));
+      h('div', { class: 'todo' },
+        hasNews ? h('div', {}, h('span', { class: 'nieuw-bol' }), 'Nieuw sinds je laatste bezoek') : null,
+        list.length ? list.map((t) => h('div', {}, h('span', { class: 'stip' }), t))
+          : hasNews ? null : h('div', { class: 'rustig' }, 'Niets openstaand'))));
   };
 
   // ---------- Toevoegen: één klant of een hele lijst ----------
@@ -121,9 +131,11 @@ const TABS = [
 export async function clientHeader(clientId, tab) {
   const client = await api.get(`/clients/${clientId}`);
   const counts = { planning: client.open_plans + client.open_inputs };
+  const news = client.news ?? {};
   const tabs = h('nav', { class: 'tabs', 'aria-label': 'Onderdelen' }, TABS.map(([key, label, ic]) =>
     h('a', { href: `#/klant/${clientId}/${key}`, class: tab === key ? 'actief' : '', 'aria-current': tab === key ? 'page' : null },
-      icon(ic, { size: 16 }), label, counts[key] ? h('span', { class: 'teller' }, counts[key]) : null)));
+      icon(ic, { size: 16 }), label, counts[key] ? h('span', { class: 'teller' }, counts[key]) : null,
+      news[key] && tab !== key ? h('span', { class: 'nieuw-bol', title: 'Nieuw toegevoegd door een ander account' }) : null)));
   return {
     client,
     head: (actions) => pageHead({

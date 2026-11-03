@@ -55,7 +55,7 @@ export function mediaForCalendarItems(db, itemIds) {
 
 export function listCalendar(db, clientId, from, to) {
   const rows = db.prepare(`
-    SELECT ci.*, u.name AS assignee_name FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
+    SELECT ci.*, COALESCE(NULLIF(ci.assignee, ''), u.name) AS assignee_name FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
     WHERE ci.client_id = ? AND ci.publish_date BETWEEN ? AND ? ORDER BY ci.publish_date, ci.channel`).all(clientId, from, to);
   const media = mediaForCalendarItems(db, rows.map((r) => r.id));
   return rows.map((r) => ({ ...r, media: media.get(r.id) ?? [] }));
@@ -63,7 +63,7 @@ export function listCalendar(db, clientId, from, to) {
 
 export function getCalendarItem(db, id) {
   const row = db.prepare(`
-    SELECT ci.*, u.name AS assignee_name FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
+    SELECT ci.*, COALESCE(NULLIF(ci.assignee, ''), u.name) AS assignee_name FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
     WHERE ci.id = ?`).get(id);
   if (!row) return null;
   return { ...row, media: mediaForCalendarItems(db, [id]).get(id) ?? [] };

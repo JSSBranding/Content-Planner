@@ -26,6 +26,7 @@ const ADDED_COLUMNS = [
   ['clients', 'website', "TEXT NOT NULL DEFAULT ''"],
   ['clients', 'contact', "TEXT NOT NULL DEFAULT ''"],
   ['calendar_items', 'content_pillar', 'TEXT'],
+  ['calendar_items', 'assignee', "TEXT NOT NULL DEFAULT ''"],
 ];
 function migrate(db) {
   for (const [table, column, type] of ADDED_COLUMNS) {

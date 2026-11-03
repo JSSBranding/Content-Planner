@@ -189,7 +189,7 @@ export function buildSeed(today) {
       calendar.push({
         id: id('k'), client_id: 'c-bakkerij', publish_date: date, suggested_time: { linkedin: '08:30', facebook: '19:30', instagram: '19:00' }[channel],
         channel, body, topic: post.topic, content_pillar: post.pillar, source_info: '', internal_notes: notes, status,
-        assignee_id: status === 'placeholder_actie_nodig' ? 'u-sam' : date <= weekAhead && date >= t ? 'u-vera' : null,
+        assignee: status === 'placeholder_actie_nodig' ? 'Sam' : date <= weekAhead && date >= t ? 'Lotte' : '', assignee_id: null,
         plan_id: null, created_by: 'u-lisa', created_at: created, updated_at: created,
         media: status === 'placeholder_actie_nodig' ? [] : [`m-${post.media}`],
       });
@@ -223,11 +223,11 @@ export function buildSeed(today) {
     id: id('k'), client_id: 'c-bakkerij', publish_date: planDays[0], suggested_time: '12:00', channel: 'instagram',
     body: 'Nieuw: de spaarkaart is terug! Bij tien stempels een gratis brood naar keuze 🍞\n\n#bakkerijdevries #spaarkaart',
     topic: 'Spaarkaart is terug', content_pillar: 'Aanbod', source_info: 'Handmatig toegevoegd op verzoek van de klant', internal_notes: '', status: 'tekst_gereed',
-    assignee_id: null, plan_id: null, created_by: 'u-sam', created_at: created, updated_at: created, media: ['m-winkel'],
+    assignee: 'Sam', assignee_id: null, plan_id: null, created_by: 'u-sam', created_at: new Date(today.getTime() - 3 * 3600000).toISOString(), updated_at: created, media: ['m-winkel'],
   });
 
   return {
-    version: 4, currentUserId: null, users, permissions: normalizePermissions(CAN),
+    version: 5, currentUserId: null, seen: {}, seenItems: {}, users, permissions: normalizePermissions(CAN),
     clients: [bakkerij, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };
