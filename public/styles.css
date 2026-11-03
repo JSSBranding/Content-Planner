@@ -131,7 +131,8 @@ label { display: block; font-weight: 500; font-size: 13px; margin-bottom: 6px; }
 .zijbalk .zoek:focus { border-color: var(--turkoois); box-shadow: none; }
 .zijbalk .zoek::placeholder { color: #a9acab; }
 .zijbalk nav { display: grid; gap: 1px; }
-.zijbalk .klantenlijst { overflow-y: auto; overflow-x: hidden; flex: 1; margin: 0 -12px; padding: 0 12px; align-content: start; }
+.zijbalk .klantenlijst { overflow-y: auto; overflow-x: hidden; flex: 1; align-content: start; }
+.klantenlijst .zijlink.actief::before { left: 0; top: 9px; bottom: 9px; border-radius: 3px; }
 .zijlink {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 10px; border-radius: var(--r);
