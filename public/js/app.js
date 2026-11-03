@@ -9,6 +9,7 @@ import { settingsView, confirmDeleteClient } from './views/settings.js';
 import { shootsView } from './views/shoots.js';
 import { usersView } from './views/users.js';
 import { clientSetupView } from './views/setup.js';
+import { archivedView } from './views/archived.js';
 
 const root = document.getElementById('app');
 
@@ -17,6 +18,7 @@ const routes = [
   ['/', clientsView, 'overzicht'],
   ['/gebruikers', usersView, 'gebruikers'],
   ['/inrichten', clientSetupView, 'inrichten'],
+  ['/gearchiveerd', archivedView, 'gearchiveerd'],
   ['/klant/:clientId', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/kalender', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/planning', plansView, 'klant', 'planning'],
@@ -85,6 +87,7 @@ function sidebar(clients, route) {
       can('manageClients') ? h('a', { href: '#/?nieuw=1', title: 'Nieuwe klant', 'aria-label': 'Nieuwe klant' }, icon('plus', { size: 16 })) : null),
     search,
     list,
+    archivedLink(clients, route),
     h('div', { class: 'voet' },
       meta.demo ? null : h('div', { class: `ai-status ${meta.ai.available ? 'aan' : ''}`, title: meta.ai.available ? `Model: ${meta.ai.model}` : 'Op de server is nog geen ANTHROPIC_API_KEY ingesteld.' },
         meta.ai.available ? 'AI actief' : 'AI in voorbeeldmodus'),
@@ -93,6 +96,14 @@ function sidebar(clients, route) {
         h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(roleLabel(meta.user.role))),
         h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email)),
         h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog')))));
+}
+
+// Gearchiveerde klanten staan niet in de lijst, maar zijn hier altijd terug te vinden.
+function archivedLink(clients, route) {
+  const count = clients.filter((c) => c.archived).length;
+  const active = route.section === 'gearchiveerd' || (route.section === 'klant' && clients.find((c) => c.id === route.params.clientId)?.archived);
+  return h('a', { class: `zijlink archieflink ${active ? 'actief' : ''}`, href: '#/gearchiveerd', 'aria-current': active ? 'page' : null },
+    icon('archief'), h('span', { class: 'naam' }, 'Gearchiveerd'), count ? h('span', { class: 'aantal' }, count) : null);
 }
 
 // ---------- Demoversie ----------
@@ -155,7 +166,7 @@ export function clientMenu(c, nameEl) {
     items.push(
       ...(nameEl ? [{ label: 'Naam wijzigen', icon: 'bewerk', action: () => renameInline(c, nameEl) }] : [{ label: 'Naam wijzigen', icon: 'bewerk', action: go('instellingen') }]),
       { label: 'Dupliceren', icon: 'kopie', action: () => duplicateClient(c) },
-      { label: c.archived ? 'Weer actief maken' : 'Archiveren', icon: 'slot', action: () => toggleArchive(c) },
+      { label: c.archived ? 'Weer actief maken' : 'Archiveren', icon: 'archief', action: () => toggleArchive(c) },
       { label: 'Klant verwijderen', icon: 'prullenbak', action: () => confirmDeleteClient(c) },
     );
   }
@@ -203,10 +214,10 @@ async function duplicateClient(c) {
   }
 }
 
-async function toggleArchive(c) {
+export async function toggleArchive(c) {
   try {
     await api.patch(`/clients/${c.id}`, { archived: !c.archived });
-    toast(c.archived ? `${c.name} is weer actief` : `${c.name} is gearchiveerd`);
+    toast(c.archived ? `${c.name} is weer actief en staat weer in de zijbalk` : `${c.name} is gearchiveerd. Je vindt hem onder Gearchiveerd, links onderaan de klantenlijst.`);
     render();
   } catch (err) {
     showError(err);

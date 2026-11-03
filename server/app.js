@@ -358,7 +358,8 @@ export function createApp(db, { secureCookies = false } = {}) {
       SELECT c.*,
         (SELECT COUNT(*) FROM client_inputs i WHERE i.client_id = c.id AND i.processed = 0) AS open_inputs,
         (SELECT COUNT(*) FROM content_plans p WHERE p.client_id = c.id AND p.status IN ('concept','in_controle','aanpassen','goedgekeurd')) AS open_plans,
-        (SELECT COUNT(*) FROM calendar_items ci WHERE ci.client_id = c.id AND ci.publish_date >= ? AND ci.status = 'placeholder_actie_nodig') AS action_needed
+        (SELECT COUNT(*) FROM calendar_items ci WHERE ci.client_id = c.id AND ci.publish_date >= ? AND ci.status = 'placeholder_actie_nodig') AS action_needed,
+        (SELECT COUNT(*) FROM calendar_items ci WHERE ci.client_id = c.id) AS post_count
       FROM clients c ORDER BY c.archived, c.name COLLATE NOCASE`).all(today);
     res.json(rows.map((r) => ({ ...mapClient(r), news: newsFor(req.user, r.id) })));
   });
@@ -440,6 +441,9 @@ export function createApp(db, { secureCookies = false } = {}) {
       ai_memory = ?, archived = ?, context = ?, target_audience = ?, website = ?, contact = ? WHERE id = ?`).run(f.name, f.strategy,
       f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived, f.context, f.target_audience,
       f.website, f.contact, req.params.id);
+    // Onthoud wanneer een klant is gearchiveerd; bij terugzetten valt de datum weg.
+    db.prepare(`UPDATE clients SET archived_at = CASE WHEN archived = 1 THEN COALESCE(archived_at, datetime('now')) ELSE NULL END
+      WHERE id = ?`).run(req.params.id);
     res.json(getClient(db, req.params.id));
   });
 

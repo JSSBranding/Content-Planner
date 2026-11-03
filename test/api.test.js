@@ -324,3 +324,19 @@ test('klant dupliceren en planning voor één dag', async () => {
   assert.equal(plan.body.items.length, 1);
   assert.equal(plan.body.items[0].date, '2026-12-02');
 });
+
+test('gearchiveerde klant: datum en aantal posts bewaard, en weer terug te zetten', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Archief Test', channels: ['instagram'], posts_per_week: 2 })).body;
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2026-12-02', channel: 'instagram', body: 'Bewaard' });
+  const archived = (await admin('PATCH', `/api/clients/${c.id}`, { archived: true })).body;
+  assert.equal(archived.archived, true);
+  assert.ok(archived.archived_at, 'archiefdatum is gezet');
+  const listed = (await admin('GET', '/api/clients')).body.find((x) => x.id === c.id);
+  assert.equal(listed.archived, true);
+  assert.equal(listed.post_count, 1, 'posts blijven bewaard');
+  // Andere wijzigingen laten de archiefdatum staan.
+  assert.equal((await admin('PATCH', `/api/clients/${c.id}`, { tone_of_voice: 'Rustig' })).body.archived_at, archived.archived_at);
+  const back = (await admin('PATCH', `/api/clients/${c.id}`, { archived: false })).body;
+  assert.equal(back.archived, false);
+  assert.equal(back.archived_at, null);
+});

@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS clients (
   website         TEXT NOT NULL DEFAULT '',
   contact         TEXT NOT NULL DEFAULT '',          -- contactpersoon bij de klant
   archived        INTEGER NOT NULL DEFAULT 0,
+  archived_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

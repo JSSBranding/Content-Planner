@@ -334,6 +334,7 @@ const clientCounts = (c) => {
     open_inputs: state.inputs.filter((i) => i.client_id === c.id && !i.processed).length,
     open_plans: state.plans.filter((p) => p.clientId === c.id && ['concept', 'in_controle', 'aanpassen', 'goedgekeurd'].includes(p.status)).length,
     action_needed: state.calendar.filter((i) => i.client_id === c.id && i.publish_date >= today && i.status === 'placeholder_actie_nodig').length,
+    post_count: state.calendar.filter((i) => i.client_id === c.id).length,
     news: newsFor(c.id),
   };
 };
@@ -390,6 +391,7 @@ route('PATCH', '/clients/:id', ({ id }, b) => {
   const f = clientFields(b ?? {}, c);
   if (nameTaken(f.name, id)) fail(409, `Er bestaat al een klant met de naam ${f.name}.`);
   Object.assign(c, f);
+  c.archived_at = c.archived ? (c.archived_at ?? now()) : null;
   return structuredClone(c);
 });
 route('DELETE', '/clients/:id', ({ id }, b) => {

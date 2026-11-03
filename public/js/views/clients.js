@@ -114,8 +114,8 @@ export async function clientsView({ query }) {
         h('a', { href: '#/inrichten' }, 'Vul ze in één overzicht in'), '.')) : null,
     active.length > 8 ? h('div', { class: 'filters' }, h('div', { class: 'zoekveld' }, icon('zoek', { size: 16 }), search)) : null,
     active.length ? grid : !newMode ? emptyState('Nog geen klanten. Voeg je eerste klant toe om te beginnen.', newButton) : null,
-    archived.length ? h('details', { class: 'uitklap' }, h('summary', { class: 'zacht' }, `Gearchiveerde klanten (${archived.length})`),
-      h('div', { class: 'klantkaarten', style: { marginTop: '12px' } }, archived.map(card))) : null,
+    archived.length ? h('p', { class: 'archiefverwijzing' }, icon('archief', { size: 16 }),
+      h('a', { href: '#/gearchiveerd' }, `${archived.length} gearchiveerde klant${archived.length === 1 ? '' : 'en'} bekijken`)) : null,
   );
 }
 
@@ -126,6 +126,16 @@ const TABS = [
   ['shoots', 'Contentshoots', 'camera'],
   ['instellingen', 'Klantprofiel', 'profiel'],
 ];
+
+function archivedNotice(client) {
+  return h('div', { class: 'melding let-op archiefmelding' }, icon('archief'),
+    h('div', {}, h('strong', {}, 'Deze klant is gearchiveerd. '), 'Hij staat niet in de zijbalk; alle gegevens zijn bewaard. ',
+      h('a', { href: '#/gearchiveerd' }, 'Naar Gearchiveerd')),
+    can('manageClients') ? h('button', {
+      type: 'button', class: 'knop klein',
+      onclick: async () => { const { toggleArchive } = await import('../app.js'); toggleArchive(client); },
+    }, 'Weer actief maken') : null);
+}
 
 // Kop met klantnaam, acties en tabbladen boven elk klantscherm.
 export async function clientHeader(clientId, tab) {
@@ -150,7 +160,7 @@ export async function clientHeader(clientId, tab) {
       }, icon('meer', { size: 18 })),
       sub: `${client.posts_per_week} posts per week op ${client.channels.map(channelLabel).join(', ') || 'nog geen kanalen'}`,
       actions,
-      tabs,
+      tabs: [client.archived ? archivedNotice(client) : null, tabs],
     }),
   };
 }
