@@ -538,3 +538,5 @@ table.rechten input[type=checkbox]:disabled { cursor: not-allowed; }
 .teksten-per-kanaal textarea { min-height: 120px; }
 .twee-kolommen.profiel { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 @media (max-width: 1100px) { .twee-kolommen.profiel { grid-template-columns: 1fr; } }
+
+table.rechten tr.vast td { background: #fafbfb; }

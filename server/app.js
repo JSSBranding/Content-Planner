@@ -307,8 +307,9 @@ export function createApp(db, { secureCookies = false } = {}) {
   // ---------- Klanten ----------
 
   function clientFields(body, current = {}) {
-    const channels = body.channels ?? current.channels ?? [];
-    if (!Array.isArray(channels) || channels.some((c) => !CHANNEL_KEYS.includes(c))) fail(400, 'Onbekend kanaal.');
+    const rawChannels = body.channels ?? current.channels ?? [];
+    if (!Array.isArray(rawChannels)) fail(400, 'Onbekend kanaal.');
+    const channels = rawChannels.filter((c) => CHANNEL_KEYS.includes(c)); // kanalen die niet meer bestaan vallen weg
     const pillars = (body.content_pillars ?? current.content_pillars ?? []).map((p) => str(p, 100).trim()).filter(Boolean);
     const ppw = Number(body.posts_per_week ?? current.posts_per_week ?? 3);
     if (!Number.isInteger(ppw) || ppw < 1 || ppw > 21) fail(400, 'Publicatiefrequentie moet tussen 1 en 21 per week liggen.');
@@ -468,7 +469,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.json(listMedia(db, req.params.id));
   });
 
-  api.post('/clients/:id/media', requirePermission('editContent'), (req, res, next) => {
+  api.post('/clients/:id/media', requirePermission('manageMedia'), (req, res, next) => {
     clientOr404(req.params.id);
     next();
   }, mediaUpload.array('files', 50), (req, res) => {
@@ -506,7 +507,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.download(mediaPath(m), m.filename);
   });
 
-  api.patch('/media/:id', requirePermission('editContent'), (req, res) => {
+  api.patch('/media/:id', requirePermission('manageMedia'), (req, res) => {
     const m = mediaOr404(req.params.id);
     const b = req.body ?? {};
     const tags = Array.isArray(b.tags) ? b.tags.map((t) => str(t, 50).trim()).filter(Boolean) : json.parse(m.tags, []);
@@ -517,7 +518,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.json({ ok: true });
   });
 
-  api.delete('/media/:id', requirePermission('editContent'), (req, res) => {
+  api.delete('/media/:id', requirePermission('manageMedia'), (req, res) => {
     const m = mediaOr404(req.params.id);
     const used = db.prepare('SELECT COUNT(*) AS n FROM calendar_item_media WHERE media_asset_id = ?').get(m.id).n;
     if (used) fail(409, `Dit bestand is gekoppeld aan ${used} kalenderitem(s). Ontkoppel het eerst.`);

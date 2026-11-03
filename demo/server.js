@@ -6,10 +6,10 @@ import {
 } from './lib/plan.js';
 import { examplePlan, exampleShoots } from './lib/voorbeeld.js';
 import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
-import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, PERMISSION_KEYS } from './lib/constants.js';
+import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v3';
+const STORE_KEY = 'jcs-demo-v4';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 3) return saved;
+    if (saved?.version === 4) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -265,9 +265,7 @@ route('POST', '/logout', () => { state.currentUserId = null; return { ok: true }
 route('POST', '/demo/opnieuw', () => { reset(); return { ok: true }; });
 route('PUT', '/permissions', (_, b) => {
   need('manageUsers');
-  const next = b?.permissions ?? {};
-  const clean = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, [...new Set((next[p] ?? []).filter((r) => ROLE_KEYS.includes(r)))]]));
-  if (!clean.manageUsers.includes('admin')) clean.manageUsers.push('admin');
+  const clean = normalizePermissions(b?.permissions ?? {});
   state.permissions = clean;
   return { permissions: clean };
 });
@@ -306,8 +304,9 @@ const clientCounts = (c) => {
 };
 const nameTaken = (name, exceptId) => state.clients.some((c) => c.id !== exceptId && c.name.toLowerCase() === name.toLowerCase());
 function clientFields(body, current = {}) {
-  const channels = body.channels ?? current.channels ?? [];
-  if (!Array.isArray(channels) || channels.some((c) => !CHANNEL_KEYS.includes(c))) fail(400, 'Onbekend kanaal.');
+  const rawChannels = body.channels ?? current.channels ?? [];
+  if (!Array.isArray(rawChannels)) fail(400, 'Onbekend kanaal.');
+  const channels = rawChannels.filter((c) => CHANNEL_KEYS.includes(c));
   const ppw = Number(body.posts_per_week ?? current.posts_per_week ?? 3);
   if (!Number.isInteger(ppw) || ppw < 1 || ppw > 21) fail(400, 'Publicatiefrequentie moet tussen 1 en 21 per week liggen.');
   const name = str(body.name ?? current.name, 200).trim() || fail(400, 'Naam is verplicht.');
@@ -413,7 +412,7 @@ route('DELETE', '/inputs/:id', ({ id }) => {
 // Beeld
 route('GET', '/clients/:id/media', ({ id }) => { clientOr404(id); return listMedia(id); });
 route('POST', '/clients/:id/media', async ({ id }, form) => {
-  need('editContent');
+  need('manageMedia');
   clientOr404(id);
   const files = form instanceof FormData ? form.getAll('files').filter((f) => /^(image|video)\//.test(f.type)) : [];
   if (!files.length) fail(400, 'Geen foto\'s of video\'s ontvangen. Alleen beeld- en videobestanden zijn toegestaan.');
@@ -437,7 +436,7 @@ route('POST', '/clients/:id/media', async ({ id }, form) => {
   return { ids };
 });
 route('PATCH', '/media/:id', ({ id }, b) => {
-  need('editContent');
+  need('manageMedia');
   const m = mediaOr404(id);
   if (Array.isArray(b?.tags)) m.tags = b.tags.map((t) => str(t, 50).trim()).filter(Boolean);
   if ('description' in (b ?? {})) m.description = str(b.description, 1000);
@@ -446,7 +445,7 @@ route('PATCH', '/media/:id', ({ id }, b) => {
   return { ok: true };
 });
 route('DELETE', '/media/:id', ({ id }) => {
-  need('editContent');
+  need('manageMedia');
   const m = mediaOr404(id);
   const used = state.calendar.filter((i) => i.media.includes(id)).length;
   if (used) fail(409, `Dit bestand is gekoppeld aan ${used} kalenderitem(s). Ontkoppel het eerst.`);

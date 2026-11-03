@@ -52,16 +52,33 @@ export async function usersView({ rerender }) {
   // ---------- Rechten per rol ----------
 
   const boxes = {};
+  const byKey = Object.fromEntries(meta.permissionList.map((p) => [p.key, p]));
+  // Logisch houden: aanvinken neemt het benodigde recht mee, uitvinken haalt wat ervan afhangt weg.
+  function cascade(permKey, role, checked) {
+    if (checked && byKey[permKey].requires) {
+      const box = boxes[byKey[permKey].requires][role];
+      if (!box.checked) { box.checked = true; cascade(byKey[permKey].requires, role, true); }
+    }
+    if (!checked) {
+      for (const p of meta.permissionList.filter((x) => x.requires === permKey)) {
+        const box = boxes[p.key][role];
+        if (box.checked && !box.disabled) { box.checked = false; cascade(p.key, role, false); }
+      }
+    }
+  }
   const matrix = h('table', { class: 'lijst rechten' },
     h('thead', {}, h('tr', {}, h('th', {}, 'Recht'), meta.roles.map((r) => h('th', { class: 'midden' }, r.label)))),
-    h('tbody', {}, meta.permissionList.map((p) => h('tr', {},
-      h('td', {}, h('div', { style: { fontWeight: 500 } }, p.label), h('div', { class: 'zacht' }, p.description)),
+    h('tbody', {}, meta.permissionList.map((p) => h('tr', { class: p.everyone ? 'vast' : '' },
+      h('td', {},
+        h('div', { style: { fontWeight: 500 } }, p.label, p.everyone ? h('span', { class: 'chip', style: { marginLeft: '8px' } }, 'Iedereen') : null),
+        h('div', { class: 'zacht' }, p.description),
+        p.requires ? h('div', { class: 'zacht', style: { fontSize: '12px', marginTop: '2px' } }, `Inclusief: ${byKey[p.requires].label.toLowerCase()}`) : null),
       meta.roles.map((r) => {
-        const locked = p.key === 'manageUsers' && r.key === 'admin';
+        const locked = p.everyone || (p.key === 'manageUsers' && r.key === 'admin');
         const box = h('input', {
-          type: 'checkbox', checked: meta.permissions[p.key]?.includes(r.key), disabled: locked,
-          'aria-label': `${r.label}: ${p.label}`, title: locked ? 'Chefkes houden dit recht altijd' : null,
-          onchange: () => { saveBar.hidden = false; },
+          type: 'checkbox', checked: p.everyone || meta.permissions[p.key]?.includes(r.key), disabled: locked,
+          'aria-label': `${r.label}: ${p.label}`, title: p.everyone ? 'Iedereen kan dit altijd' : locked ? 'Chefkes houden dit recht altijd' : null,
+          onchange: (e) => { cascade(p.key, r.key, e.target.checked); saveBar.hidden = false; },
         });
         (boxes[p.key] ??= {})[r.key] = box;
         return h('td', { class: 'midden' }, box);
@@ -96,7 +113,7 @@ export async function usersView({ rerender }) {
             h('td', { style: { textAlign: 'right' } }, h('button', { class: 'knop klein', onclick: () => edit(u) }, 'Wijzigen')))))),
         h('div', { class: 'paneelblok' },
           h('h2', {}, 'Wie mag wat?'),
-          h('p', { class: 'zacht' }, 'Vink per rol aan wat die mag. Wijzigingen gelden direct voor iedereen met die rol.'),
+          h('p', { class: 'zacht' }, 'Vink per rol aan wat die mag. De kalender gebruiken, inclusief status op Volledig ingepland zetten, kan iedereen altijd. Wijzigingen gelden direct voor iedereen met die rol.'),
           h('div', { class: 'tabel-wrap' }, matrix),
           saveBar)),
       form));

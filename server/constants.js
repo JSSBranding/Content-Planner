@@ -6,8 +6,6 @@ export const CHANNELS = [
   { key: 'linkedin', label: 'LinkedIn' },
   { key: 'tiktok', label: 'TikTok' },
   { key: 'youtube', label: 'YouTube' },
-  { key: 'pinterest', label: 'Pinterest' },
-  { key: 'x', label: 'X' },
 ];
 export const CHANNEL_KEYS = CHANNELS.map((c) => c.key);
 
@@ -42,22 +40,38 @@ export const ROLES = [
 export const ROLE_KEYS = ROLES.map((r) => r.key);
 
 // Standaardrechten per rol. Chefkes kunnen dit aanpassen in Team en rechten; de actuele rechten staan in de database.
+// updateStatus is de vaste basis: iedereen mag de status wijzigen (ook naar Volledig ingepland) en opmerkingen plaatsen.
 export const CAN = {
   manageUsers: ['admin'],
   manageClients: ['admin', 'social_media_manager'],
   managePlans: ['admin', 'social_media_manager'],
   approvePlans: ['admin', 'social_media_manager'],
   editContent: ['admin', 'social_media_manager', 'medewerker'],
+  manageMedia: ['admin', 'social_media_manager', 'medewerker', 'vormgever'],
   updateStatus: ['admin', 'social_media_manager', 'medewerker', 'vormgever'],
 };
 
-// Omschrijvingen voor het rechtenoverzicht, in de volgorde waarin ze worden getoond.
+// Rechten voor het overzicht, van basis naar zwaar. 'requires' = het recht dat er automatisch bij hoort.
 export const PERMISSIONS = [
-  { key: 'updateStatus', label: 'Status en interne opmerkingen wijzigen', description: 'Bijvoorbeeld een post op Volledig ingepland zetten.' },
-  { key: 'editContent', label: 'Posts, teksten, beeld en klantinput bewerken', description: 'Posts toevoegen en aanpassen, beeld uploaden, klantinput toevoegen.' },
-  { key: 'managePlans', label: 'Conceptplanningen maken en aanpassen', description: 'Voorstellen laten maken, onderwerpen en datums wijzigen.' },
-  { key: 'approvePlans', label: 'Planningen goedkeuren en in de kalender zetten', description: 'De laatste stap voordat een AI-planning in de kalender komt.' },
+  { key: 'updateStatus', label: 'Kalender gebruiken', description: 'Bekijken, tekst kopiëren, beeld downloaden, status wijzigen (ook naar Volledig ingepland) en opmerkingen plaatsen.', everyone: true },
+  { key: 'manageMedia', label: 'Beeld uploaden en beheren', description: 'Foto\'s en video\'s toevoegen aan de beeldbibliotheek, beschrijven en verwijderen.' },
+  { key: 'editContent', label: 'Posts en klantinput bewerken', description: 'Posts toevoegen, teksten en beeld bij een post aanpassen, klantinput toevoegen.' },
+  { key: 'managePlans', label: 'Conceptplanningen maken', description: 'Voorstellen laten maken en aanpassen.', requires: 'editContent' },
+  { key: 'approvePlans', label: 'Planningen goedkeuren', description: 'De laatste stap voordat een planning in de kalender komt.', requires: 'managePlans' },
   { key: 'manageClients', label: 'Klanten beheren', description: 'Toevoegen, inrichten, hernoemen, archiveren en verwijderen.' },
-  { key: 'manageUsers', label: 'Team, accounts en rechten beheren', description: 'Chefkes houden dit recht altijd, zodat niemand zichzelf buitensluit.' },
+  { key: 'manageUsers', label: 'Team en rechten beheren', description: 'Accounts toevoegen en deze rechten aanpassen. Chefkes houden dit altijd.' },
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
+
+/** Maakt rechten logisch: de basis geldt voor iedereen, afhankelijke rechten komen mee, chefkes houden teambeheer. */
+export function normalizePermissions(next) {
+  const out = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, [...new Set((next?.[p] ?? []).filter((r) => ROLE_KEYS.includes(r)))]]));
+  out.updateStatus = [...ROLE_KEYS];
+  if (!out.manageUsers.includes('admin')) out.manageUsers.push('admin');
+  // Van zwaar naar licht, zodat een keten (goedkeuren → plannen → bewerken) helemaal doorwerkt.
+  for (const p of [...PERMISSIONS].reverse()) {
+    if (!p.requires) continue;
+    for (const role of out[p.key]) if (!out[p.requires].includes(role)) out[p.requires].push(role);
+  }
+  return out;
+}

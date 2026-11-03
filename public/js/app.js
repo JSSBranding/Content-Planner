@@ -147,7 +147,7 @@ function clientMenu(c, nameEl) {
     { label: 'Klantinput en planning', icon: 'planning', action: go('planning') },
     { label: 'Klantprofiel en context', icon: 'profiel', action: go('instellingen') },
   ];
-  if (can('editContent')) items.push({ label: 'Beeld uploaden', icon: 'upload', action: go('media') });
+  if (can('manageMedia')) items.push({ label: 'Beeld uploaden', icon: 'upload', action: go('media') });
   if (can('manageClients')) {
     items.push(
       { label: 'Naam wijzigen', icon: 'bewerk', action: () => renameInline(c, nameEl) },

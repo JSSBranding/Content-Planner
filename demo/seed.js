@@ -1,7 +1,7 @@
 // Voorbeeldgegevens voor de demoversie. Bakkerij De Vries is een verzonnen voorbeeldklant;
 // de overige klantnamen komen uit db/startklanten.txt en starten, net als in de echte app, zonder inrichting.
 import { START_CLIENTS } from './startklanten.js';
-import { CAN } from './lib/constants.js';
+import { CAN, normalizePermissions } from './lib/constants.js';
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -227,7 +227,7 @@ export function buildSeed(today) {
   });
 
   return {
-    version: 3, currentUserId: null, users, permissions: structuredClone(CAN),
+    version: 4, currentUserId: null, users, permissions: normalizePermissions(CAN),
     clients: [bakkerij, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };

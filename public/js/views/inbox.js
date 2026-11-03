@@ -77,7 +77,7 @@ async function addInput(clientId, rerender) {
       h('div', { class: 'rij' }, h('div', { class: 'veld', style: { flex: '2 1 200px' } }, h('label', {}, 'Titel'), title), field('Bron', source)),
       field('Wat heeft de klant aangeleverd?', body),
       field('Bijzonderheden', instructions),
-      h('div', { class: 'veld' }, h('label', {}, 'Foto\'s en video\'s'), fileButton(files, 'Bestanden kiezen'), h('div', { class: 'hulp' }, 'Komen bij Beeld, gekoppeld aan deze input.')),
+      can('manageMedia') ? h('div', { class: 'veld' }, h('label', {}, 'Foto\'s en video\'s'), fileButton(files, 'Bestanden kiezen'), h('div', { class: 'hulp' }, 'Komen bij Beeld, gekoppeld aan deze input.')) : null,
     ],
     buttons: [{ label: 'Annuleren' }, {
       label: 'Toevoegen', class: 'primair',

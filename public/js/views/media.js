@@ -35,7 +35,7 @@ export async function pickMedia(clientId, { selected = [], title = 'Beeld kiezen
   const chosen = [...selected];
   const grid = h('div', { class: 'beeldlijst' });
   const filters = mediaFilters(() => draw());
-  const upload = can('editContent') ? h('input', {
+  const upload = can('manageMedia') ? h('input', {
     type: 'file', multiple: true, accept: 'image/*,video/*', hidden: true,
     onchange: async (e) => {
       try {
@@ -78,7 +78,7 @@ export async function pickMedia(clientId, { selected = [], title = 'Beeld kiezen
 
 export async function mediaView({ clientId, tab, rerender }) {
   const [{ head }, media] = await Promise.all([clientHeader(clientId, tab), api.get(`/clients/${clientId}/media`)]);
-  const editable = can('editContent');
+  const editable = can('manageMedia');
   const grid = h('div', { class: 'beeldlijst', style: { gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' } });
   const filters = mediaFilters(() => draw());
   const counter = h('span', { class: 'teller' });

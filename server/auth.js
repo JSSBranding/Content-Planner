@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { newId } from './db.js';
-import { CAN, PERMISSION_KEYS, ROLE_KEYS } from './constants.js';
+import { CAN, PERMISSION_KEYS, normalizePermissions } from './constants.js';
 
 const SESSION_DAYS = 14;
 export const COOKIE = 'jcs_sessie';
@@ -72,14 +72,16 @@ export function loadPermissions(db) {
     savePermissions(db, CAN);
     return permissions;
   }
-  permissions = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, rows.filter((r) => r.permission === p).map((r) => r.role)]));
+  const stored = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, rows.filter((r) => r.permission === p).map((r) => r.role)]));
+  // Nieuw toegevoegde rechten (zoals beeld beheren) krijgen eerst de standaardrollen.
+  for (const p of PERMISSION_KEYS) if (!rows.some((r) => r.permission === p)) stored[p] = [...CAN[p]];
+  permissions = normalizePermissions(stored);
   return permissions;
 }
 
 /** Slaat rechten op. Chefkes (admin) houden altijd het recht om team en rechten te beheren. */
 export function savePermissions(db, next) {
-  const clean = Object.fromEntries(PERMISSION_KEYS.map((p) => [p, [...new Set((next[p] ?? []).filter((r) => ROLE_KEYS.includes(r)))]]));
-  if (!clean.manageUsers.includes('admin')) clean.manageUsers.push('admin');
+  const clean = normalizePermissions(next);
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM role_permissions').run();

@@ -271,3 +271,14 @@ test('rechten per rol aanvinken; chefkes houden teambeheer', async () => {
   await admin('PUT', '/api/permissions', { permissions: meta.permissions });
   assert.equal((await designer('PATCH', `/api/calendar/${item.id}`, { body: 'Weer niet' })).status, 403);
 });
+
+test('rechten zijn logisch: status voor iedereen, afhankelijke rechten komen mee', async () => {
+  const meta = (await admin('GET', '/api/meta')).body;
+  assert.deepEqual(meta.channels.map((c) => c.key), ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube'], 'geen Pinterest en X');
+  const saved = (await admin('PUT', '/api/permissions', {
+    permissions: { ...meta.permissions, updateStatus: [], approvePlans: [...meta.permissions.approvePlans, 'medewerker'] },
+  })).body.permissions;
+  assert.equal(saved.updateStatus.length, 4, 'iedereen mag status wijzigen, ook naar Volledig ingepland');
+  assert.ok(saved.managePlans.includes('medewerker') && saved.editContent.includes('medewerker'), 'goedkeuren neemt plannen en bewerken mee');
+  await admin('PUT', '/api/permissions', { permissions: meta.permissions });
+});

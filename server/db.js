@@ -32,6 +32,11 @@ function migrate(db) {
     const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
     if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
+  // Pinterest en X worden niet meer gebruikt: uit de kanalen van klanten halen (bestaande posts blijven staan).
+  for (const c of db.prepare("SELECT id, channels FROM clients WHERE channels LIKE '%pinterest%' OR channels LIKE '%\"x\"%'").all()) {
+    const channels = JSON.parse(c.channels).filter((k) => k !== 'pinterest' && k !== 'x');
+    db.prepare('UPDATE clients SET channels = ? WHERE id = ?').run(JSON.stringify(channels), c.id);
+  }
 }
 
 export const newId = () => crypto.randomUUID();
