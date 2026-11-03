@@ -321,8 +321,12 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.json(rows.map(mapClient));
   });
 
+  const nameTaken = (name, exceptId = '') =>
+    db.prepare('SELECT 1 FROM clients WHERE name = ? COLLATE NOCASE AND id <> ?').get(name, exceptId);
+
   api.post('/clients', requirePermission('manageClients'), (req, res) => {
     const f = clientFields(req.body ?? {});
+    if (nameTaken(f.name)) fail(409, `Er bestaat al een klant met de naam ${f.name}.`);
     const id = newId();
     db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, archived)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, f.name, f.strategy, f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived);
@@ -339,12 +343,46 @@ export function createApp(db, { secureCookies = false } = {}) {
     });
   });
 
+  // Meerdere klanten tegelijk toevoegen (één naam per regel). Bestaande namen worden overgeslagen.
+  api.post('/clients/bulk', requirePermission('manageClients'), (req, res) => {
+    // Dubbele namen in de lijst: de eerste schrijfwijze telt.
+    const seen = new Set();
+    const names = (Array.isArray(req.body?.names) ? req.body.names : []).map((n) => str(n, 200).trim())
+      .filter((n) => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+    if (!names.length) fail(400, 'Vul minimaal één klantnaam in.');
+    const f = clientFields({ name: 'x', channels: req.body?.channels ?? [], posts_per_week: req.body?.posts_per_week ?? 3 });
+    const insert = db.prepare('INSERT INTO clients (id, name, channels, posts_per_week) VALUES (?, ?, ?, ?)');
+    const created = [];
+    const skipped = [];
+    transaction(db, () => {
+      for (const name of names) {
+        if (nameTaken(name)) skipped.push(name);
+        else { insert.run(newId(), name, f.channels, f.posts_per_week); created.push(name); }
+      }
+    });
+    res.status(201).json({ created, skipped });
+  });
+
   api.patch('/clients/:id', requirePermission('manageClients'), (req, res) => {
     const f = clientFields(req.body ?? {}, clientOr404(req.params.id));
+    if (nameTaken(f.name, req.params.id)) fail(409, `Er bestaat al een klant met de naam ${f.name}.`);
     db.prepare(`UPDATE clients SET name = ?, strategy = ?, tone_of_voice = ?, content_pillars = ?, channels = ?, posts_per_week = ?,
       ai_memory = ?, archived = ? WHERE id = ?`).run(f.name, f.strategy, f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week,
       f.ai_memory, f.archived, req.params.id);
     res.json(getClient(db, req.params.id));
+  });
+
+  // Definitief verwijderen, inclusief kalender, planningen, input en beeld. Alleen met de exacte klantnaam als bevestiging.
+  api.delete('/clients/:id', requirePermission('manageClients'), (req, res) => {
+    const client = clientOr404(req.params.id);
+    if (str(req.body?.confirmName).trim() !== client.name) fail(400, 'Typ de klantnaam exact over om te bevestigen.');
+    transaction(db, () => {
+      // Eerst de kalender: gekoppeld beeld mag pas weg als geen post er meer naar verwijst.
+      db.prepare('DELETE FROM calendar_items WHERE client_id = ?').run(client.id);
+      db.prepare('DELETE FROM clients WHERE id = ?').run(client.id);
+    });
+    fs.rm(path.join(UPLOAD_DIR, client.id), { recursive: true, force: true }, () => {});
+    res.json({ ok: true });
   });
 
   // ---------- Klantinput-inbox ----------

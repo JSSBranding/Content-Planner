@@ -28,7 +28,9 @@ npm install
 ANTHROPIC_API_KEY=sk-ant-... npm start
 ```
 
-Open http://localhost:3000. Bij de eerste keer maak je het beheerdersaccount aan; daarna voeg je collega's toe via **Gebruikers**.
+Open http://localhost:3000. Bij de eerste keer maak je het beheerdersaccount aan; daarna voeg je collega's toe via **Team en rechten**.
+
+Bij de eerste start met een lege database worden de klanten uit `db/startklanten.txt` aangemaakt. Daarna beheer je klanten in de app: toevoegen (los of als lijst), naam en gegevens aanpassen, archiveren en verwijderen. Het bestand wordt dan niet opnieuw gelezen, dus een verwijderde klant komt niet terug.
 
 Zonder `ANTHROPIC_API_KEY` werkt alles ook, maar dan maakt een vaste voorbeeldgenerator de planningen, teksten en shootvoorstellen (de interface toont dan "Voorbeeldmodus"). Handig om de workflow te testen.
 

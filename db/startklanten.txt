@@ -1,0 +1,52 @@
+# Klanten die bij de eerste start van een lege database worden aangemaakt.
+# Daarna beheer je klanten in de app; dit bestand wordt dan niet meer gelezen.
+Bezoek Meierijstad
+Smaakrouterooi
+Peter Geurds
+Trans-Imex
+Blue Worx
+Verbaan
+Bij Kato
+Natuurlijk! Sint-Oedenrode
+Woonboulevard Oss
+Excellent Wonen
+Rooi Live
+Puls Exclusieve tuinen
+Kinderopvang het Snuitje
+Fysio De Meierij
+De Tandenkliniek
+MentalMotion
+Aldenhoven
+De Koning Makelaardij
+De Jong Accountants
+Euro-Service
+Mutsaars Bikes
+Restaurant Hertog Jan
+Van den Biggelaar Installatietechniek
+Vissers Ventilatietechniek
+ZNI
+INAMOOD
+Taxi van Kronenburg
+Warmte Totaal de Meierij
+Ann & John Bruidsmode
+Lesautolease
+Continu Professionals
+De Kroeg
+G&T intern transport
+PSS
+Meierij IT
+Mobishield
+KOH
+iSlide
+Toekomst
+WeTakeCare
+Peppelhoeve
+Flex Projects
+YOI
+Tobroco
+JSS
+JSA
+Van Acht
+Atelier Next
+De Kleine beer
+Het Kofferen

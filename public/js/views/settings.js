@@ -1,4 +1,4 @@
-import { h, icon, field, toast, showError, page } from '../ui.js';
+import { h, icon, field, toast, showError, page, modal } from '../ui.js';
 import { api, meta, can } from '../api.js';
 import { clientHeader } from './clients.js';
 
@@ -44,8 +44,7 @@ export function clientForm({ client, onSaved, onCancel }) {
       field('Klantnaam', name),
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
       field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),
-      field('Contentpijlers', pillars, pillarHelp),
-      h('label', { class: 'vinkje' }, archived, 'Klant archiveren')),
+      field('Contentpijlers', pillars, pillarHelp)),
     h('div', { class: 'paneelblok' },
       h('h2', {}, 'Strategie en AI-geheugen'), h('p', { class: 'zacht' }, 'Gaat mee bij elk AI-voorstel en elke tekst. Telefoonnummers en e-mailadressen worden eerst weggelaten.'),
       field('Strategie', strategy, 'Doelen, doelgroep en wat de klant wil uitstralen.'),
@@ -64,5 +63,51 @@ export function clientForm({ client, onSaved, onCancel }) {
 
 export async function settingsView({ clientId, tab, rerender }) {
   const { client, head } = await clientHeader(clientId, tab);
-  return page(head(), clientForm({ client, onSaved: () => rerender() }));
+
+  async function remove() {
+    const typed = h('input', { type: 'text', autocomplete: 'off', 'aria-label': 'Klantnaam ter bevestiging' });
+    const error = h('div', { class: 'melding fout', hidden: true }, 'De naam klopt niet. Typ hem precies over.');
+    await modal({
+      title: `${client.name} verwijderen?`,
+      body: [
+        h('p', {}, 'Alle posts in de kalender, conceptplanningen, klantinput, contentshoots en het beeld van deze klant worden definitief verwijderd. Dit kun je niet ongedaan maken.'),
+        h('p', { class: 'zacht' }, 'Wil je de klant alleen uit beeld hebben? Kies dan voor archiveren; dan blijft alles bewaard.'),
+        error,
+        field(`Typ ${client.name} om te bevestigen`, typed),
+      ],
+      buttons: [{ label: 'Annuleren' }, {
+        label: 'Definitief verwijderen', class: 'gevaar',
+        action: async () => {
+          if (typed.value.trim() !== client.name) { error.hidden = false; typed.focus(); return undefined; }
+          try {
+            await api.del(`/clients/${client.id}`, { confirmName: typed.value.trim() });
+            toast(`${client.name} is verwijderd`);
+            location.hash = '#/';
+            return true;
+          } catch (err) {
+            showError(err);
+          }
+        },
+      }],
+    });
+  }
+
+  async function toggleArchive() {
+    try {
+      await api.patch(`/clients/${client.id}`, { archived: !client.archived });
+      toast(client.archived ? `${client.name} is weer actief` : `${client.name} is gearchiveerd`);
+      rerender();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  const danger = can('manageClients') ? h('div', { class: 'paneelblok', style: { marginTop: '20px' } },
+    h('h2', {}, 'Archiveren of verwijderen'),
+    h('p', { class: 'zacht' }, 'Een gearchiveerde klant verdwijnt uit de zijbalk, maar alle gegevens blijven bewaard en je kunt hem altijd terugzetten.'),
+    h('div', { class: 'knoppen' },
+      h('button', { class: 'knop', type: 'button', onclick: toggleArchive }, client.archived ? 'Weer actief maken' : 'Archiveren'),
+      h('button', { class: 'knop gevaar', type: 'button', onclick: remove }, icon('prullenbak', { size: 16 }), 'Klant verwijderen'))) : null;
+
+  return page(head(), clientForm({ client, onSaved: () => rerender() }), danger);
 }

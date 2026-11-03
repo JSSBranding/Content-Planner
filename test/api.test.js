@@ -184,3 +184,34 @@ test('beveiliging: mediabestanden in sandbox, inlogpogingen begrensd', async () 
   for (let i = 0; i < 11; i++) last = await anon('POST', '/api/login', { email: 'beheer@jss.nl', password: 'fout' });
   assert.equal(last.status, 429);
 });
+
+test('klanten beheren: lijst toevoegen, hernoemen, archiveren en verwijderen', async () => {
+  const bulk = await admin('POST', '/api/clients/bulk', { names: ['Mutsaars Bikes', 'De Kroeg', 'de kroeg', '', 'Bakkerij De Vries'], channels: ['instagram'], posts_per_week: 2 });
+  assert.equal(bulk.status, 201);
+  assert.deepEqual(bulk.body.created, ['Mutsaars Bikes', 'De Kroeg']);
+  assert.deepEqual(bulk.body.skipped, ['Bakkerij De Vries'], 'bestaande naam wordt overgeslagen');
+
+  const all = (await admin('GET', '/api/clients')).body;
+  const kroeg = all.find((c) => c.name === 'De Kroeg');
+  assert.deepEqual(kroeg.channels, ['instagram']);
+  assert.equal(kroeg.posts_per_week, 2);
+
+  assert.equal((await admin('PATCH', `/api/clients/${kroeg.id}`, { name: 'mutsaars bikes' })).status, 409, 'geen dubbele namen');
+  assert.equal((await admin('PATCH', `/api/clients/${kroeg.id}`, { name: 'Café De Kroeg' })).body.name, 'Café De Kroeg');
+  assert.equal((await designer('PATCH', `/api/clients/${kroeg.id}`, { name: 'X' })).status, 403);
+
+  // Verwijderen kan alleen met de exacte naam, en neemt kalender, planningen en beeld mee.
+  await admin('POST', `/api/clients/${kroeg.id}/calendar`, { date: '2026-12-01', channel: 'instagram', body: 'Proost' });
+  const upload = new FormData();
+  upload.append('files', new Blob([Buffer.from([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }), 'bar.jpg');
+  const [mediaId] = (await admin('POST', `/api/clients/${kroeg.id}/media`, null, { form: upload })).body.ids;
+  const item = (await admin('GET', `/api/clients/${kroeg.id}/calendar?from=2026-12-01&to=2026-12-31`)).body.items[0];
+  await admin('PATCH', `/api/calendar/${item.id}`, { media: [mediaId] });
+
+  assert.equal((await admin('DELETE', `/api/clients/${kroeg.id}`, { confirmName: 'De Kroeg' })).status, 400);
+  assert.equal((await designer('DELETE', `/api/clients/${kroeg.id}`, { confirmName: 'Café De Kroeg' })).status, 403);
+  assert.equal((await admin('DELETE', `/api/clients/${kroeg.id}`, { confirmName: 'Café De Kroeg' })).status, 200);
+  assert.equal((await admin('GET', `/api/clients/${kroeg.id}`)).status, 404);
+  assert.equal((await admin('GET', `/api/calendar/${item.id}`)).status, 404);
+  assert.ok(!fs.existsSync(path.join(dataDir, 'uploads', kroeg.id)) || fs.readdirSync(path.join(dataDir, 'uploads', kroeg.id)).length === 0);
+});
