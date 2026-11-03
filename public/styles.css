@@ -474,3 +474,15 @@ table.lijst { width: 100%; border-collapse: separate; border-spacing: 0; backgro
 .bestandkeuze { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bestandkeuze label.knop { margin: 0; }
 .bestandkeuze .gekozen { font-size: 13px; color: var(--tekst-zacht); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* ---------- Klanten inrichten ---------- */
+.tabel-wrap { overflow-x: auto; }
+table.inricht td, table.inricht th { padding: 9px 10px; }
+table.inricht th { white-space: nowrap; }
+table.inricht .midden { text-align: center; }
+table.inricht input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+table.inricht input.smal { width: 80px; height: 34px; }
+table.inricht .opslagstatus { width: 128px; }
+.klantlink { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 500; white-space: nowrap; }
+.klantlink:hover { text-decoration: underline; }
+.klantlink .initialen { width: 28px; height: 28px; border-radius: 7px; background: var(--inkt); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 600; flex: none; }

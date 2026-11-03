@@ -9,6 +9,7 @@ import { mediaView } from './views/media.js';
 import { settingsView } from './views/settings.js';
 import { shootsView } from './views/shoots.js';
 import { usersView } from './views/users.js';
+import { clientSetupView } from './views/setup.js';
 
 const root = document.getElementById('app');
 
@@ -16,6 +17,7 @@ const root = document.getElementById('app');
 const routes = [
   ['/', clientsView, 'overzicht'],
   ['/gebruikers', usersView, 'gebruikers'],
+  ['/inrichten', clientSetupView, 'inrichten'],
   ['/klant/:clientId', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/kalender', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/planning', plansView, 'klant', 'planning'],
@@ -67,6 +69,8 @@ function sidebar(clients, route) {
     h('a', { class: 'merk', href: '#/' }, h('img', { src: '/assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), 'Jouw Content Studio'),
     h('nav', { 'aria-label': 'Hoofdmenu' },
       h('a', { class: `zijlink ${route.section === 'overzicht' ? 'actief' : ''}`, href: '#/' }, icon('kalender'), h('span', { class: 'naam' }, 'Overzicht')),
+      can('manageClients') ? h('a', { class: `zijlink ${route.section === 'inrichten' ? 'actief' : ''}`, href: '#/inrichten' }, icon('profiel'), h('span', { class: 'naam' }, 'Klanten inrichten'),
+        clients.some((c) => !c.archived && !c.channels.length) ? h('span', { class: 'teller', title: 'Klanten zonder kanalen' }, clients.filter((c) => !c.archived && !c.channels.length).length) : null) : null,
       can('manageUsers') ? h('a', { class: `zijlink ${route.section === 'gebruikers' ? 'actief' : ''}`, href: '#/gebruikers' }, icon('gebruikers'), h('span', { class: 'naam' }, 'Team en rechten')) : null),
     h('div', { class: 'kopje' }, 'Klanten',
       can('manageClients') ? h('a', { href: '#/?nieuw=1', title: 'Nieuwe klant', 'aria-label': 'Nieuwe klant' }, icon('plus', { size: 16 })) : null),

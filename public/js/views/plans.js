@@ -25,7 +25,12 @@ export async function plansView({ clientId, tab }) {
   const wishes = h('textarea', { rows: 3, placeholder: 'Bijv. focus op kerst, geen posts in het weekend, LinkedIn maximaal één keer per week' });
   const openInputs = inputs.filter((i) => !i.processed).length;
 
-  const form = can('managePlans') ? h('form', {
+  const notReady = !client.channels.length;
+  const form = can('managePlans') && notReady ? h('div', { class: 'paneelblok' },
+    h('h2', {}, 'Nieuwe conceptplanning'),
+    h('p', { class: 'zacht' }, 'Stel eerst de kanalen en het aantal posts per week van deze klant in. Daar baseert de AI de planning op.'),
+    h('a', { class: 'knop primair', href: `#/klant/${clientId}/instellingen` }, 'Kanalen en frequentie instellen'))
+    : can('managePlans') ? h('form', {
     class: 'paneelblok',
     onsubmit: async (e) => {
       e.preventDefault();
