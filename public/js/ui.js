@@ -133,9 +133,10 @@ export function openMenu(anchor, items) {
 }
 
 // Vaste paginaopbouw: een kop (met titel, acties en eventueel tabs) en het werkvlak eronder.
-export function pageHead({ title, sub, actions, tabs }) {
+export function pageHead({ title, titleMenu, sub, actions, tabs }) {
+  const heading = titleMenu ? h('div', { class: 'titel-met-menu' }, h('h1', {}, title), titleMenu) : h('h1', {}, title);
   return h('header', { class: `paginakop ${tabs ? '' : 'zonder-tabs'}` },
-    h('div', { class: 'titelrij' }, h('div', {}, h('h1', {}, title), sub ? h('div', { class: 'sub' }, sub) : null),
+    h('div', { class: 'titelrij' }, h('div', {}, heading, sub ? h('div', { class: 'sub' }, sub) : null),
       actions ? h('div', { class: 'acties knoppen' }, actions) : null),
     tabs ?? null);
 }

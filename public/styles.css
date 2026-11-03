@@ -131,7 +131,7 @@ label { display: block; font-weight: 500; font-size: 13px; margin-bottom: 6px; }
 .zijbalk .zoek:focus { border-color: var(--turkoois); box-shadow: none; }
 .zijbalk .zoek::placeholder { color: #a9acab; }
 .zijbalk nav { display: grid; gap: 1px; }
-.zijbalk .klantenlijst { overflow-y: auto; overflow-x: hidden; flex: 1; align-content: start; }
+.zijbalk .klantenlijst { overflow-y: auto; overflow-x: hidden; flex: 1; align-content: start; grid-template-columns: minmax(0, 1fr); }
 .klantenlijst .zijlink.actief::before { left: 0; top: 9px; bottom: 9px; border-radius: 3px; }
 .zijlink {
   display: flex; align-items: center; gap: 10px;
@@ -514,12 +514,11 @@ table.inricht .opslagstatus { width: 128px; }
 /* Klantenlijst in de zijbalk: menu en direct hernoemen */
 .zijrij { position: relative; display: flex; align-items: center; }
 .zijrij > .zijlink { flex: 1; min-width: 0; padding-right: 34px; }
-.zijmeer { all: unset; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: #c9cbcb; cursor: pointer; opacity: .45; }
-.zijrij:hover .zijmeer, .zijmeer:focus-visible, .zijrij:has(.zijlink.actief) .zijmeer { opacity: 1; }
+.zijmeer { all: unset; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: #b9bcbc; cursor: pointer; }
+.zijrij:hover .zijmeer, .zijrij:has(.zijlink.actief) .zijmeer { color: #fff; }
 .zijmeer:hover { background: rgb(255 255 255 / 12%); color: #fff; }
 .zijmeer:focus-visible { outline: 2px solid var(--turkoois); }
 .zijnaam-invoer { height: 34px; margin: 1px 0; background-color: #fff; color: var(--tekst); border-color: var(--turkoois); }
-@media (hover: none) { .zijmeer { opacity: 1; } }
 .plakkerig { position: sticky; top: 16px; }
 .demo-accounts { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--lijn); }
 .demo-accounts h2 { font-size: 15px; margin-bottom: 4px; }
@@ -557,3 +556,9 @@ table.rechten tr.vast td { background: #fafbfb; }
 .segment button + button { border-left: 1px solid var(--lijn-sterk); }
 .segment button.aan { background: var(--inkt); color: #fff; }
 .segment button:focus-visible { outline: 2px solid var(--inkt); outline-offset: -2px; }
+
+/* Menu naast de klantnaam bovenaan de klantpagina */
+.paginakop .titel-met-menu { display: flex; align-items: center; gap: 6px; }
+.paginakop .titel-met-menu h1 { margin: 0; }
+.titelmeer { color: var(--tekst-zacht); }
+.titelmeer:hover { color: var(--tekst); }

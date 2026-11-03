@@ -140,6 +140,14 @@ export async function clientHeader(clientId, tab) {
     client,
     head: (actions) => pageHead({
       title: client.name,
+      titleMenu: h('button', {
+        type: 'button', class: 'knop kaal icoonknop klein titelmeer', 'aria-label': `Meer voor ${client.name}`, title: 'Naam wijzigen, dupliceren, archiveren of verwijderen',
+        onclick: async (e) => {
+          const button = e.currentTarget;
+          const { clientMenu } = await import('../app.js');
+          openMenu(button, clientMenu(client, null));
+        },
+      }, icon('meer', { size: 18 })),
       sub: `${client.posts_per_week} posts per week op ${client.channels.map(channelLabel).join(', ') || 'nog geen kanalen'}`,
       actions,
       tabs,
