@@ -1,12 +1,11 @@
-import { h, fill, icon, showError, initials, modal, toast } from './ui.js';
+import { h, fill, icon, showError, initials, modal, toast, openMenu } from './ui.js';
 import { api, meta, loadMeta, can, roleLabel } from './api.js';
 import { loginView, setupView } from './views/login.js';
 import { clientsView } from './views/clients.js';
 import { calendarView } from './views/calendar.js';
 import { plansView, planView } from './views/plans.js';
-import { inboxView } from './views/inbox.js';
 import { mediaView } from './views/media.js';
-import { settingsView } from './views/settings.js';
+import { settingsView, confirmDeleteClient } from './views/settings.js';
 import { shootsView } from './views/shoots.js';
 import { usersView } from './views/users.js';
 import { clientSetupView } from './views/setup.js';
@@ -22,7 +21,7 @@ const routes = [
   ['/klant/:clientId/kalender', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/planning', plansView, 'klant', 'planning'],
   ['/klant/:clientId/planning/:planId', planView, 'klant', 'planning'],
-  ['/klant/:clientId/input', inboxView, 'klant', 'input'],
+  ['/klant/:clientId/input', plansView, 'klant', 'planning'],
   ['/klant/:clientId/media', mediaView, 'klant', 'media'],
   ['/klant/:clientId/shoots', shootsView, 'klant', 'shoots'],
   ['/klant/:clientId/instellingen', settingsView, 'klant', 'instellingen'],
@@ -41,6 +40,7 @@ function match(path) {
 // ---------- Zijbalk ----------
 
 let clientSearch = '';
+let renaming = false; // tijdens hernoemen in de zijbalk wordt die niet vernieuwd
 
 function sidebar(clients, route) {
   const list = h('nav', { class: 'klantenlijst', 'aria-label': 'Klanten' });
@@ -52,10 +52,18 @@ function sidebar(clients, route) {
       const active = route.params.clientId === c.id;
       // Blijf op hetzelfde tabblad als je van klant wisselt.
       const tab = route.section === 'klant' && route.tab !== 'kalender' ? route.tab : 'kalender';
-      return h('a', { class: `zijlink ${active ? 'actief' : ''}`, href: `#/klant/${c.id}/${tab}`, 'aria-current': active ? 'page' : null, title: c.name },
-        h('span', { class: 'initialen' }, initials(c.name)),
-        h('span', { class: 'naam' }, c.name),
-        waiting ? h('span', { class: 'teller', title: `${waiting} conceptplanning(en) open` }, waiting) : null);
+      const name = h('span', { class: 'naam' }, c.name);
+      const link = h('a', {
+        class: `zijlink ${active ? 'actief' : ''}`, href: `#/klant/${c.id}/${tab}`, 'aria-current': active ? 'page' : null, title: c.name,
+        ondblclick: (e) => { if (can('manageClients')) { e.preventDefault(); renameInline(c, name); } },
+      },
+      h('span', { class: 'initialen' }, initials(c.name)), name,
+      waiting ? h('span', { class: 'teller', title: `${waiting} conceptplanning(en) open` }, waiting) : null);
+      const more = h('button', {
+        type: 'button', class: 'zijmeer', 'aria-label': `Meer voor ${c.name}`, title: 'Meer',
+        onclick: (e) => openMenu(e.currentTarget, clientMenu(c, name)),
+      }, icon('meer', { size: 16 }));
+      return h('div', { class: 'zijrij' }, link, more);
     }) : h('p', { class: 'zacht', style: { color: '#a9acab', padding: '4px 10px' } }, q ? 'Geen klant gevonden.' : 'Nog geen klanten.'));
   };
   drawList();
@@ -79,7 +87,8 @@ function sidebar(clients, route) {
     h('div', { class: 'voet' },
       meta.demo ? null : h('div', { class: `ai-status ${meta.ai.available ? 'aan' : ''}`, title: meta.ai.available ? `Model: ${meta.ai.model}` : 'Op de server is nog geen ANTHROPIC_API_KEY ingesteld.' },
         meta.ai.available ? 'AI actief' : 'AI in voorbeeldmodus'),
-      meta.demo ? demoBlock() : h('div', { class: 'gebruiker' },
+      meta.demo ? demoBlock() : null,
+      h('div', { class: 'gebruiker' },
         h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(meta.user.name)),
         h('div', { class: 'wie' }, h('div', {}, meta.user.name), h('div', { class: 'rol' }, roleLabel(meta.user.role))),
         h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog')))));
@@ -90,16 +99,6 @@ function sidebar(clients, route) {
 function demoBlock() {
   return h('div', { class: 'demoblok' },
     h('div', { class: 'demolabel' }, 'Demoversie'),
-    h('label', { for: 'demo-rol' }, 'Bekijk als'),
-    h('select', {
-      id: 'demo-rol', value: meta.user.id,
-      onchange: async (e) => {
-        await api.post('/demo/gebruiker', { id: e.target.value });
-        await loadMeta();
-        toast(`Je kijkt nu als ${meta.user.name} (${roleLabel(meta.user.role).toLowerCase()})`);
-        render();
-      },
-    }, meta.demoUsers.map((u) => h('option', { value: u.id }, `${u.name}, ${roleLabel(u.role).toLowerCase()}`))),
     h('div', { class: 'demoknoppen' },
       h('button', { type: 'button', onclick: () => showWelcome() }, 'Wat kan ik proberen?'),
       h('button', { type: 'button', onclick: resetDemo }, 'Opnieuw beginnen')));
@@ -121,11 +120,11 @@ async function resetDemo() {
 
 function showWelcome() {
   const tries = [
-    ['Een planning goedkeuren', 'Open Bakkerij De Vries, tabblad Conceptplanning. Er wacht een voorstel voor volgende maand. Pas iets aan en keur het goed. Je ziet ook wat er gebeurt als er al een post op een datum staat.'],
-    ['De kalender gebruiken', 'Beweeg over een post om de tekst te kopiëren of de status te wijzigen. Klik op een post om tekst, beeld en opmerkingen te zien, en blader met de pijltjes naar de volgende.'],
-    ['Als vormgever kijken', 'Kies linksonder Vera Vormgever. Zij kan tekst en beeld bekijken en kopiëren, en alleen de status en opmerkingen aanpassen.'],
+    ['Een planning goedkeuren', 'Open Bakkerij De Vries, tabblad Input en planning. Er wacht een voorstel voor volgende maand. Pas iets aan en keur het goed. Je ziet ook wat er gebeurt als er al een post op een datum staat.'],
+    ['De kalender gebruiken', 'Naast de datums zie je feest- en actiedagen. Beweeg over een post om de tekst te kopiëren of de status te wijzigen; klik erop voor tekst, beeld, pijler en opmerkingen.'],
+    ['Klanten snel beheren', 'Dubbelklik in de zijbalk op een klantnaam om hem te wijzigen, of gebruik de drie puntjes voor meer opties.'],
+    ['Inloggen met een andere rol', 'Log uit (linksonder) en log in als Branding of Stage om te zien wat die rol wel en niet kan.'],
     ['Klanten inrichten', 'Onder Klanten inrichten staan jullie eigen klantnamen. Vink kanalen aan en vul het aantal posts per week in.'],
-    ['Klantinput en beeld', 'Voeg bij een klant input toe of upload eigen foto\'s. Die blijven in deze browser bewaard.'],
   ];
   modal({
     title: 'Welkom in de demo van Jouw Content Studio', width: '620px',
@@ -137,6 +136,67 @@ function showWelcome() {
     buttons: [{ label: 'Aan de slag', class: 'primair', value: true }],
   });
   try { localStorage.setItem('jcs-demo-welkom', '1'); } catch { /* geen opslag */ }
+}
+
+// ---------- Klant snel beheren vanuit de zijbalk ----------
+
+function clientMenu(c, nameEl) {
+  const go = (path) => () => { location.hash = `#/klant/${c.id}/${path}`; };
+  const items = [
+    { label: 'Contentkalender', icon: 'kalender', action: go('kalender') },
+    { label: 'Klantinput en planning', icon: 'planning', action: go('planning') },
+    { label: 'Klantprofiel en context', icon: 'profiel', action: go('instellingen') },
+  ];
+  if (can('editContent')) items.push({ label: 'Beeld uploaden', icon: 'upload', action: go('media') });
+  if (can('manageClients')) {
+    items.push(
+      { label: 'Naam wijzigen', icon: 'bewerk', action: () => renameInline(c, nameEl) },
+      { label: c.archived ? 'Weer actief maken' : 'Archiveren', icon: 'slot', action: () => toggleArchive(c) },
+      { label: 'Klant verwijderen', icon: 'prullenbak', action: () => confirmDeleteClient(c) },
+    );
+  }
+  return items;
+}
+
+// Naam direct in de zijbalk aanpassen: Enter of wegklikken slaat op, Escape annuleert.
+function renameInline(c, nameEl) {
+  const row = nameEl.closest('.zijrij');
+  const input = h('input', { type: 'text', class: 'zijnaam-invoer', value: c.name, 'aria-label': `Nieuwe naam voor ${c.name}` });
+  let done = false;
+  renaming = true;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    renaming = false;
+    const value = input.value.trim();
+    if (save && value && value !== c.name) {
+      try {
+        await api.patch(`/clients/${c.id}`, { name: value });
+        toast(`Naam gewijzigd in ${value}`);
+      } catch (err) {
+        showError(err);
+      }
+    }
+    render();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  row.replaceChildren(input);
+  input.focus();
+  input.select();
+}
+
+async function toggleArchive(c) {
+  try {
+    await api.patch(`/clients/${c.id}`, { archived: !c.archived });
+    toast(c.archived ? `${c.name} is weer actief` : `${c.name} is gearchiveerd`);
+    render();
+  } catch (err) {
+    showError(err);
+  }
 }
 
 async function logout() {
@@ -167,7 +227,7 @@ export async function render() {
       route.view({ ...route.params, query: new URLSearchParams(query), tab: route.tab, rerender: render }),
     ]);
     if (token !== renderToken) return;
-    root.querySelector('.zijbalk').replaceWith(sidebar(clients, route));
+    if (!renaming) root.querySelector('.zijbalk').replaceWith(sidebar(clients, route));
     fill(main, content);
     document.title = `${main.querySelector('h1')?.textContent ?? 'Overzicht'} | Jouw Content Studio`;
   } catch (err) {
@@ -180,10 +240,12 @@ export async function render() {
 async function onLoggedIn() {
   await loadMeta();
   fill(root);
-  render();
+  await render();
+  maybeWelcome();
 }
 
 window.addEventListener('hashchange', render);
+window.addEventListener('jcs:vernieuw', () => render());
 window.addEventListener('jcs:uitgelogd', () => {
   if (!meta.user) return;
   meta.user = null;
@@ -199,9 +261,14 @@ document.addEventListener('click', (e) => {
   toast('Downloaden kan in de demo niet. In de echte versie wel.');
 }, true);
 
-loadMeta().then(async () => {
-  await render();
+// In de demo verschijnt na de eerste keer inloggen een korte uitleg.
+function maybeWelcome() {
   let seen = false;
   try { seen = localStorage.getItem('jcs-demo-welkom') === '1'; } catch { /* geen opslag */ }
-  if (meta.demo && !seen) showWelcome();
+  if (meta.demo && meta.user && !seen) showWelcome();
+}
+
+loadMeta().then(async () => {
+  await render();
+  maybeWelcome();
 }).catch((err) => fill(root, h('div', { class: 'inhoud-vlak' }, h('div', { class: 'melding fout' }, `De server is niet bereikbaar: ${err.message}`))));

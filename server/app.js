@@ -74,9 +74,9 @@ export function createApp(db, { secureCookies = false } = {}) {
 
   function insertCalendarItem(data) {
     const id = newId();
-    db.prepare(`INSERT INTO calendar_items (id, client_id, publish_date, suggested_time, channel, body, topic, source_info,
-        internal_notes, status, assignee_id, plan_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, data.clientId, data.date, data.time ?? null, data.channel, data.body ?? '', data.topic ?? '',
+    db.prepare(`INSERT INTO calendar_items (id, client_id, publish_date, suggested_time, channel, body, topic, content_pillar, source_info,
+        internal_notes, status, assignee_id, plan_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, data.clientId, data.date, data.time ?? null, data.channel, data.body ?? '', data.topic ?? '', data.pillar || null,
         data.sourceInfo ?? '', data.notes ?? '', data.status, data.assigneeId ?? null, data.planId ?? null, data.createdBy ?? null);
     setCalendarMedia(id, data.media ?? [], data.clientId);
     return id;
@@ -84,7 +84,6 @@ export function createApp(db, { secureCookies = false } = {}) {
 
   function sourceInfoFor(item, inputsById) {
     const parts = [];
-    if (item.pillar) parts.push(`Contentpijler: ${item.pillar}`);
     const input = item.clientInputId && inputsById.get(item.clientInputId);
     if (input) parts.push(`Klantinput${input.title ? ` "${input.title}"` : ''}: ${input.body.slice(0, 600)}`);
     if (input?.instructions) parts.push(`Instructies: ${input.instructions}`);
@@ -163,16 +162,16 @@ export function createApp(db, { secureCookies = false } = {}) {
       for (const cell of result.newCalendarItems) {
         const data = {
           clientId: plan.clientId, date: cell.date, time: cell.time, channel: cell.channel, body: cell.body,
-          topic: cell.topic, sourceInfo: sourceInfoFor(cell, inputsById), status: cell.status, media: cell.media,
+          topic: cell.topic, pillar: cell.pillar, sourceInfo: sourceInfoFor(cell, inputsById), status: cell.status, media: cell.media,
           planId: plan.id, createdBy: user.id,
         };
         const old = replacedByKey.get(cellKey(cell.date, cell.channel));
         if (old) {
           const current = getCalendarItem(db, old.id);
           saveVersion(current, user.id, 'Vervangen door goedgekeurde AI-planning (expliciet gekozen)');
-          db.prepare(`UPDATE calendar_items SET suggested_time = ?, body = ?, topic = ?, source_info = ?, status = ?, plan_id = ?,
+          db.prepare(`UPDATE calendar_items SET suggested_time = ?, body = ?, topic = ?, content_pillar = ?, source_info = ?, status = ?, plan_id = ?,
               updated_at = datetime('now') WHERE id = ?`)
-            .run(data.time ?? null, data.body, data.topic, data.sourceInfo, data.status, plan.id, old.id);
+            .run(data.time ?? null, data.body, data.topic, data.pillar || null, data.sourceInfo, data.status, plan.id, old.id);
           setCalendarMedia(old.id, data.media, plan.clientId);
           placed.push({ id: old.id, ...cell });
         } else {
@@ -307,6 +306,8 @@ export function createApp(db, { secureCookies = false } = {}) {
       name, strategy: str(body.strategy ?? current.strategy), tone_of_voice: str(body.tone_of_voice ?? current.tone_of_voice),
       content_pillars: json.str(pillars), channels: json.str(channels), posts_per_week: ppw,
       ai_memory: str(body.ai_memory ?? current.ai_memory), archived: (body.archived ?? current.archived) ? 1 : 0,
+      context: str(body.context ?? current.context), target_audience: str(body.target_audience ?? current.target_audience, 5000),
+      website: str(body.website ?? current.website, 300).trim(), contact: str(body.contact ?? current.contact, 500),
     };
   }
 
@@ -328,8 +329,9 @@ export function createApp(db, { secureCookies = false } = {}) {
     const f = clientFields(req.body ?? {});
     if (nameTaken(f.name)) fail(409, `Er bestaat al een klant met de naam ${f.name}.`);
     const id = newId();
-    db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, f.name, f.strategy, f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived);
+    db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, archived,
+      context, target_audience, website, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, f.name, f.strategy, f.tone_of_voice,
+      f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived, f.context, f.target_audience, f.website, f.contact);
     res.status(201).json(getClient(db, id));
   });
 
@@ -367,8 +369,9 @@ export function createApp(db, { secureCookies = false } = {}) {
     const f = clientFields(req.body ?? {}, clientOr404(req.params.id));
     if (nameTaken(f.name, req.params.id)) fail(409, `Er bestaat al een klant met de naam ${f.name}.`);
     db.prepare(`UPDATE clients SET name = ?, strategy = ?, tone_of_voice = ?, content_pillars = ?, channels = ?, posts_per_week = ?,
-      ai_memory = ?, archived = ? WHERE id = ?`).run(f.name, f.strategy, f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week,
-      f.ai_memory, f.archived, req.params.id);
+      ai_memory = ?, archived = ?, context = ?, target_audience = ?, website = ?, contact = ? WHERE id = ?`).run(f.name, f.strategy,
+      f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived, f.context, f.target_audience,
+      f.website, f.contact, req.params.id);
     res.json(getClient(db, req.params.id));
   });
 
@@ -678,7 +681,7 @@ export function createApp(db, { secureCookies = false } = {}) {
     const media = Array.isArray(b.media) ? b.media : [];
     const id = insertCalendarItem({
       clientId: client.id, date: b.date, time: optTime(b.time), channel: b.channel, body: str(b.body), topic: str(b.topic, 300),
-      sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
+      pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
       assigneeId: b.assignee_id || null, media, createdBy: req.user.id,
     });
     res.status(201).json(getCalendarItem(db, id));
@@ -694,9 +697,9 @@ export function createApp(db, { secureCookies = false } = {}) {
   api.patch('/calendar/:id', requirePermission('updateStatus'), (req, res) => {
     const item = calendarItemOr404(req.params.id);
     const b = req.body ?? {};
-    const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'source_info', 'assignee_id', 'media'];
+    const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
     if (!can(req.user, 'editContent') && contentFields.some((f) => f in b)) {
-      fail(403, 'Als vormgever kun je alleen de status en interne opmerkingen aanpassen.');
+      fail(403, 'Met de rol Branding kun je alleen de status en interne opmerkingen aanpassen.');
     }
     if (b.status && !CALENDAR_STATUS_KEYS.includes(b.status)) fail(400, 'Onbekende status.');
     if ('publish_date' in b && !isDate(b.publish_date)) fail(400, 'Ongeldige datum.');
@@ -707,6 +710,7 @@ export function createApp(db, { secureCookies = false } = {}) {
       channel: b.channel ?? item.channel,
       body: 'body' in b ? str(b.body) : item.body,
       topic: 'topic' in b ? str(b.topic, 300) : item.topic,
+      content_pillar: 'content_pillar' in b ? str(b.content_pillar, 100).trim() || null : item.content_pillar,
       source_info: 'source_info' in b ? str(b.source_info) : item.source_info,
       internal_notes: 'internal_notes' in b ? str(b.internal_notes) : item.internal_notes,
       status: b.status ?? item.status,
@@ -719,10 +723,10 @@ export function createApp(db, { secureCookies = false } = {}) {
     }
     transaction(db, () => {
       saveVersion(item, req.user.id, str(b.reason, 200) || 'Bewerkt');
-      db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, source_info = ?,
-          internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(next.publish_date, next.suggested_time, next.channel, next.body, next.topic, next.source_info, next.internal_notes,
-          next.status, next.assignee_id, item.id);
+      db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, content_pillar = ?,
+          source_info = ?, internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(next.publish_date, next.suggested_time, next.channel, next.body, next.topic, next.content_pillar, next.source_info,
+          next.internal_notes, next.status, next.assignee_id, item.id);
       if (Array.isArray(b.media)) setCalendarMedia(item.id, b.media, item.client_id);
     });
     res.json(getCalendarItem(db, item.id));
@@ -750,10 +754,10 @@ export function createApp(db, { secureCookies = false } = {}) {
     if (taken) fail(409, 'Op de datum en het kanaal van deze versie staat inmiddels andere content.');
     transaction(db, () => {
       saveVersion(item, req.user.id, `Vóór terugzetten naar versie van ${v.changed_at}`);
-      db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, source_info = ?,
-          internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(s.publish_date, s.suggested_time, s.channel, s.body, s.topic, s.source_info, s.internal_notes, s.status,
-          s.assignee_id ?? null, item.id);
+      db.prepare(`UPDATE calendar_items SET publish_date = ?, suggested_time = ?, channel = ?, body = ?, topic = ?, content_pillar = ?,
+          source_info = ?, internal_notes = ?, status = ?, assignee_id = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(s.publish_date, s.suggested_time, s.channel, s.body, s.topic, s.content_pillar ?? null, s.source_info, s.internal_notes,
+          s.status, s.assignee_id ?? null, item.id);
       setCalendarMedia(item.id, s.media ?? [], item.client_id);
     });
     res.json(getCalendarItem(db, item.id));
@@ -818,13 +822,13 @@ export function createApp(db, { secureCookies = false } = {}) {
         const status = r.status ?? initialStatus({ body: r.body, media: [] });
         if (!r.exists) {
           insertCalendarItem({ clientId: client.id, date: r.date, time: r.time, channel: r.channel, body: r.body, topic: r.topic,
-            sourceInfo: r.source, notes: r.notes, status, createdBy: req.user.id });
+            pillar: r.pillar, sourceInfo: r.source, notes: r.notes, status, createdBy: req.user.id });
           created++;
         } else if (overwrite.has(r.key)) {
           const id = existing.get(r.key);
           saveVersion(getCalendarItem(db, id), req.user.id, 'Vervangen via Excel-import (expliciet gekozen)');
-          db.prepare(`UPDATE calendar_items SET suggested_time = ?, body = ?, topic = ?, source_info = ?, internal_notes = ?, status = ?,
-              updated_at = datetime('now') WHERE id = ?`).run(r.time, r.body, r.topic, r.source, r.notes, status, id);
+          db.prepare(`UPDATE calendar_items SET suggested_time = ?, body = ?, topic = ?, content_pillar = ?, source_info = ?, internal_notes = ?,
+              status = ?, updated_at = datetime('now') WHERE id = ?`).run(r.time, r.body, r.topic, r.pillar || null, r.source, r.notes, status, id);
           replaced++;
         } else {
           skipped++;
@@ -862,6 +866,7 @@ export function createApp(db, { secureCookies = false } = {}) {
 
   app.use('/assets', express.static(path.join(root, 'assets'), { maxAge: '7d' }));
   app.use('/styles', express.static(path.join(root, 'src', 'styles')));
+  app.get('/gedeeld/dagen.js', (_req, res) => res.type('js').sendFile(path.join(root, 'src', 'dagen.js')));
   app.use(express.static(path.join(root, 'public')));
   app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(root, 'public', 'index.html')));
 

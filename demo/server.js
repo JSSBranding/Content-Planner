@@ -9,7 +9,7 @@ import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, CAN } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v1';
+const STORE_KEY = 'jcs-demo-v2';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 1) return saved;
+    if (saved?.version === 2) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -50,7 +50,14 @@ const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && 
 const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 const optTime = (s) => (s ? (isTime(s) ? s : fail(400, `Ongeldig tijdstip: ${s}`)) : null);
 
-const currentUser = () => state.users.find((u) => u.id === state.currentUserId) ?? state.users[0];
+const currentUser = () => state.users.find((u) => u.id === state.currentUserId) ?? null;
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, created_at: u.created_at });
+
+// Wachtwoorden worden in de demo als SHA-256-hash bewaard, nooit leesbaar.
+export async function hashPassword(password) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`jcs-demo:${password}`));
+  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 const can = (permission) => CAN[permission].includes(currentUser().role);
 const need = (permission) => { if (!can(permission)) fail(403, 'Je hebt geen rechten voor deze actie.'); };
 const userName = (id) => state.users.find((u) => u.id === id)?.name ?? null;
@@ -100,7 +107,7 @@ function setMedia(item, ids) {
 function insertItem(data) {
   const item = {
     id: newId(), client_id: data.clientId, publish_date: data.date, suggested_time: data.time ?? null, channel: data.channel,
-    body: data.body ?? '', topic: data.topic ?? '', source_info: data.sourceInfo ?? '', internal_notes: data.notes ?? '',
+    body: data.body ?? '', topic: data.topic ?? '', content_pillar: data.pillar || null, source_info: data.sourceInfo ?? '', internal_notes: data.notes ?? '',
     status: data.status, assignee_id: data.assigneeId ?? null, plan_id: data.planId ?? null,
     created_by: currentUser().id, created_at: now(), updated_at: now(), media: [],
   };
@@ -166,7 +173,6 @@ function textsFor(client, items) {
 
 function sourceInfoFor(cell, client) {
   const parts = [];
-  if (cell.pillar) parts.push(`Contentpijler: ${cell.pillar}`);
   const input = cell.clientInputId && state.inputs.find((i) => i.id === cell.clientInputId);
   if (input) parts.push(`Klantinput${input.title ? ` "${input.title}"` : ''}: ${input.body.slice(0, 600)}`);
   if (input?.instructions) parts.push(`Instructies: ${input.instructions}`);
@@ -194,10 +200,10 @@ function placeInCalendar(plan, resolutions, { writeTexts }) {
     if (old) {
       const item = itemOr404(old.id);
       saveVersion(item, 'Vervangen door goedgekeurde AI-planning (expliciet gekozen)');
-      Object.assign(item, { suggested_time: cell.time ?? null, body, topic: cell.topic, source_info: sourceInfoFor(cell, client), status, plan_id: plan.id, updated_at: now() });
+      Object.assign(item, { suggested_time: cell.time ?? null, body, topic: cell.topic, content_pillar: cell.pillar || null, source_info: sourceInfoFor(cell, client), status, plan_id: plan.id, updated_at: now() });
       setMedia(item, cell.media);
     } else {
-      insertItem({ clientId: plan.clientId, date: cell.date, time: cell.time, channel: cell.channel, body, topic: cell.topic, sourceInfo: sourceInfoFor(cell, client), status, media: cell.media, planId: plan.id });
+      insertItem({ clientId: plan.clientId, date: cell.date, time: cell.time, channel: cell.channel, body, topic: cell.topic, pillar: cell.pillar, sourceInfo: sourceInfoFor(cell, client), status, media: cell.media, planId: plan.id });
     }
     placed++;
   }
@@ -243,38 +249,41 @@ const route = (method, pattern, handler) => {
   routes.push({ method, re, names, handler });
 };
 
+const PUBLIC = new Set(['GET /meta', 'POST /login', 'POST /logout', 'POST /demo/opnieuw']);
 route('GET', '/meta', () => ({
   channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: CAN,
-  ai: { available: false, model: null }, needsSetup: false, user: { ...currentUser() }, demo: true,
-  demoUsers: state.users.map(({ id, name, role }) => ({ id, name, role })),
+  ai: { available: false, model: null }, needsSetup: false, user: currentUser() ? publicUser(currentUser()) : null, demo: true,
+  demoAccounts: state.users.filter((u) => u.demoAccount).map((u) => ({ name: u.name, email: u.email, role: u.role })),
 }));
-route('POST', '/logout', () => ({ ok: true }));
-route('POST', '/demo/gebruiker', (_, body) => {
-  if (!state.users.some((u) => u.id === body?.id)) fail(400, 'Onbekende gebruiker.');
-  state.currentUserId = body.id;
+route('POST', '/login', async (_, b) => {
+  const user = state.users.find((u) => u.email.toLowerCase() === str(b?.email).trim().toLowerCase());
+  if (!user || user.password_hash !== await hashPassword(str(b?.password))) fail(401, 'E-mailadres of wachtwoord klopt niet.');
+  state.currentUserId = user.id;
   return { ok: true };
 });
+route('POST', '/logout', () => { state.currentUserId = null; return { ok: true }; });
 route('POST', '/demo/opnieuw', () => { reset(); return { ok: true }; });
 
 // Gebruikers
-route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? { ...u } : { id: u.id, name: u.name, role: u.role })).sort((a, b) => a.name.localeCompare(b.name)));
-route('POST', '/users', (_, b) => {
+route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role })).sort((a, b) => a.name.localeCompare(b.name)));
+route('POST', '/users', async (_, b) => {
   need('manageUsers');
   if (!str(b?.name).trim() || !str(b?.email).includes('@') || !ROLE_KEYS.includes(b?.role) || str(b?.password).length < 10) {
     fail(400, 'Vul naam, e-mailadres, rol en een wachtwoord van minimaal 10 tekens in.');
   }
   if (state.users.some((u) => u.email.toLowerCase() === b.email.trim().toLowerCase())) fail(409, 'Dit e-mailadres bestaat al.');
-  const user = { id: newId(), name: b.name.trim(), email: b.email.trim(), role: b.role, created_at: now() };
+  const user = { id: newId(), name: b.name.trim(), email: b.email.trim(), role: b.role, created_at: now(), password_hash: await hashPassword(b.password) };
   state.users.push(user);
   return { id: user.id };
 });
-route('PATCH', '/users/:id', ({ id }, b) => {
+route('PATCH', '/users/:id', async ({ id }, b) => {
   need('manageUsers');
   const user = state.users.find((u) => u.id === id) ?? fail(404, 'Gebruiker niet gevonden.');
   if (b?.role && !ROLE_KEYS.includes(b.role)) fail(400, 'Onbekende rol.');
   if (b?.role && b.role !== 'admin' && user.role === 'admin' && state.users.filter((u) => u.role === 'admin').length === 1) fail(400, 'Er moet minimaal één beheerder blijven.');
   if (b?.password && str(b.password).length < 10) fail(400, 'Wachtwoord moet minimaal 10 tekens zijn.');
   Object.assign(user, { name: str(b?.name).trim() || user.name, role: b?.role ?? user.role });
+  if (b?.password) user.password_hash = await hashPassword(b.password);
   return { ok: true };
 });
 
@@ -298,6 +307,8 @@ function clientFields(body, current = {}) {
     name, strategy: str(body.strategy ?? current.strategy ?? ''), tone_of_voice: str(body.tone_of_voice ?? current.tone_of_voice ?? ''),
     content_pillars: (body.content_pillars ?? current.content_pillars ?? []).map((p) => str(p, 100).trim()).filter(Boolean),
     channels, posts_per_week: ppw, ai_memory: str(body.ai_memory ?? current.ai_memory ?? ''), archived: Boolean(body.archived ?? current.archived),
+    context: str(body.context ?? current.context ?? ''), target_audience: str(body.target_audience ?? current.target_audience ?? '', 5000),
+    website: str(body.website ?? current.website ?? '', 300).trim(), contact: str(body.contact ?? current.contact ?? '', 500),
   };
 }
 route('GET', '/clients', () => [...state.clients]
@@ -322,7 +333,7 @@ route('POST', '/clients/bulk', (_, b) => {
   const skipped = [];
   for (const name of names) {
     if (nameTaken(name)) { skipped.push(name); continue; }
-    state.clients.push({ id: newId(), ...f, name, content_pillars: [], strategy: '', tone_of_voice: '', ai_memory: '', archived: false, created_at: now() });
+    state.clients.push({ id: newId(), ...f, name, content_pillars: [], strategy: '', tone_of_voice: '', ai_memory: '', context: '', target_audience: '', website: '', contact: '', archived: false, created_at: now() });
     created.push(name);
   }
   return { created, skipped };
@@ -553,7 +564,7 @@ route('POST', '/clients/:id/calendar', ({ id }, b) => {
   const media = Array.isArray(b.media) ? b.media : [];
   const item = insertItem({
     clientId: id, date: b.date, time: optTime(b.time), channel: b.channel, body: str(b.body), topic: str(b.topic, 300),
-    sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
+    pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes), status: b.status ?? initialStatus({ body: b.body, media }),
     assigneeId: b.assignee_id || null, media,
   });
   return mapItem(item);
@@ -567,8 +578,8 @@ route('GET', '/calendar/:id', ({ id }) => {
 route('PATCH', '/calendar/:id', ({ id }, b) => {
   need('updateStatus');
   const item = itemOr404(id);
-  const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'source_info', 'assignee_id', 'media'];
-  if (!can('editContent') && contentFields.some((f) => f in (b ?? {}))) fail(403, 'Als vormgever kun je alleen de status en interne opmerkingen aanpassen.');
+  const contentFields = ['publish_date', 'suggested_time', 'channel', 'body', 'topic', 'content_pillar', 'source_info', 'assignee_id', 'media'];
+  if (!can('editContent') && contentFields.some((f) => f in (b ?? {}))) fail(403, 'Met de rol Branding kun je alleen de status en interne opmerkingen aanpassen.');
   if (b?.status && !CALENDAR_STATUS_KEYS.includes(b.status)) fail(400, 'Onbekende status.');
   if ('publish_date' in b && !isDate(b.publish_date)) fail(400, 'Ongeldige datum.');
   if ('channel' in b && !CHANNEL_KEYS.includes(b.channel)) fail(400, 'Onbekend kanaal.');
@@ -583,6 +594,7 @@ route('PATCH', '/calendar/:id', ({ id }, b) => {
     suggested_time: 'suggested_time' in b ? optTime(b.suggested_time) : item.suggested_time,
     body: 'body' in b ? str(b.body) : item.body,
     topic: 'topic' in b ? str(b.topic, 300) : item.topic,
+    content_pillar: 'content_pillar' in b ? str(b.content_pillar, 100).trim() || null : item.content_pillar,
     source_info: 'source_info' in b ? str(b.source_info) : item.source_info,
     internal_notes: 'internal_notes' in b ? str(b.internal_notes) : item.internal_notes,
     status: b.status ?? item.status,
@@ -612,7 +624,7 @@ route('POST', '/calendar/:id/versions/:vid/restore', ({ id, vid }) => {
   saveVersion(item, 'Vóór terugzetten naar een eerdere versie');
   Object.assign(item, {
     publish_date: s.publish_date, suggested_time: s.suggested_time, channel: s.channel, body: s.body, topic: s.topic,
-    source_info: s.source_info, internal_notes: s.internal_notes, status: s.status, assignee_id: s.assignee_id ?? null, updated_at: now(),
+    content_pillar: s.content_pillar ?? null, source_info: s.source_info, internal_notes: s.internal_notes, status: s.status, assignee_id: s.assignee_id ?? null, updated_at: now(),
   });
   setMedia(item, s.media ?? []);
   return mapItem(item);
@@ -651,6 +663,7 @@ export async function handle(method, url, body) {
     const m = path.match(r.re);
     if (!m) continue;
     const params = Object.fromEntries(r.names.map((n, i) => [n, decodeURIComponent(m[i + 1])]));
+    if (!PUBLIC.has(`${method} ${path}`) && !currentUser()) return { status: 401, body: { error: 'Log eerst in.' } };
     try {
       const result = await r.handler(params, body, query);
       if (method !== 'GET') persist();

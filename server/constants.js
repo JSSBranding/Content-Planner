@@ -32,11 +32,12 @@ export const PLAN_STATUSES = [
   { key: 'toegevoegd_aan_kalender', label: 'Toegevoegd aan kalender' },
 ];
 
+// De rollen bij Jouw Social Studio. De sleutels blijven gelijk (bestaande accounts), alleen de namen zijn die van het team.
 export const ROLES = [
-  { key: 'admin', label: 'Beheerder' },
-  { key: 'social_media_manager', label: 'Social media manager' },
-  { key: 'medewerker', label: 'Medewerker' },
-  { key: 'vormgever', label: 'Grafisch vormgever' },
+  { key: 'admin', label: 'Chefkes', description: 'Alles, inclusief het team en de rechten beheren' },
+  { key: 'social_media_manager', label: 'Social media manager', description: 'Klanten inrichten, conceptplanningen maken en goedkeuren' },
+  { key: 'vormgever', label: 'Branding', description: 'Tekst en beeld bekijken, kopiëren en downloaden; status en opmerkingen aanpassen' },
+  { key: 'medewerker', label: 'Stage', description: 'Teksten, beeld en klantinput bewerken; niets goedkeuren of verwijderen' },
 ];
 export const ROLE_KEYS = ROLES.map((r) => r.key);
 

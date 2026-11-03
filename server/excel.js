@@ -17,6 +17,7 @@ const COLUMNS = [
   { header: 'Tijd (voorstel)', key: 'time', width: 10 },
   { header: 'Kanaal', key: 'channel', width: 12 },
   { header: 'Onderwerp', key: 'topic', width: 30 },
+  { header: 'Contentpijler', key: 'pillar', width: 18 },
   { header: 'Tekst', key: 'body', width: 70 },
   { header: 'Beeld (bestandsnamen)', key: 'media', width: 34 },
   { header: 'Status', key: 'status', width: 26 },
@@ -41,6 +42,7 @@ export async function exportCalendar({ client, items, from, to }) {
       time: it.suggested_time ?? '',
       channel: channelLabel(it.channel),
       topic: it.topic,
+      pillar: it.content_pillar ?? '',
       body: it.body,
       media: it.media.map((m) => m.filename).join(', '),
       status: statusLabel(it.status),
@@ -55,7 +57,7 @@ export async function exportCalendar({ client, items, from, to }) {
       cell.font = statusFont(it.status);
     });
   }
-  ws.autoFilter = { from: 'A1', to: 'J1' };
+  ws.autoFilter = { from: 'A1', to: 'K1' };
 
   const legend = wb.addWorksheet('Statussen');
   legend.columns = [{ header: 'Kleur', key: 'c', width: 20 }, { header: 'Status', key: 's', width: 32 }];
@@ -106,7 +108,7 @@ export async function parseCalendarWorkbook(buffer) {
   ws.getRow(1).eachCell((cell, col) => { headers[cellText(cell).toLowerCase()] = col; });
   const col = (...names) => names.map((n) => headers[n.toLowerCase()]).find(Boolean);
   const c = {
-    date: col('Datum'), time: col('Tijd (voorstel)', 'Tijd'), channel: col('Kanaal'), topic: col('Onderwerp'),
+    date: col('Datum'), time: col('Tijd (voorstel)', 'Tijd'), channel: col('Kanaal'), topic: col('Onderwerp'), pillar: col('Contentpijler', 'Pijler'),
     body: col('Tekst'), status: col('Status'), source: col('Bron / klantinput', 'Bron'), notes: col('Interne opmerkingen', 'Opmerkingen'),
   };
   if (!c.date || !c.channel) return { rows: [], errors: ['Kolommen "Datum" en "Kanaal" zijn verplicht.'] };
@@ -122,7 +124,7 @@ export async function parseCalendarWorkbook(buffer) {
     if (!date) return errors.push(`Rij ${n}: ongeldige datum "${get('date')}".`);
     if (!channel) return errors.push(`Rij ${n}: onbekend kanaal "${get('channel')}".`);
     rows.push({
-      row: n, date, channel, time: normalizeTime(get('time')), topic: get('topic'), body: get('body'),
+      row: n, date, channel, time: normalizeTime(get('time')), topic: get('topic'), pillar: get('pillar'), body: get('body'),
       status: find(CALENDAR_STATUSES, get('status')) ?? null, source: get('source'), notes: get('notes'),
     });
   });

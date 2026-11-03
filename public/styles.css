@@ -27,7 +27,7 @@
   --r: 8px;
   --r-groot: 12px;
   --schaduw-zwevend: 0 12px 32px rgb(30 30 29 / 16%), 0 2px 6px rgb(30 30 29 / 8%);
-  --zijbalk: 248px;
+  --zijbalk: 284px;
 }
 
 * { box-sizing: border-box; }
@@ -131,7 +131,7 @@ label { display: block; font-weight: 500; font-size: 13px; margin-bottom: 6px; }
 .zijbalk .zoek:focus { border-color: var(--turkoois); box-shadow: none; }
 .zijbalk .zoek::placeholder { color: #a9acab; }
 .zijbalk nav { display: grid; gap: 1px; }
-.zijbalk .klantenlijst { overflow-y: auto; flex: 1; margin: 0 -12px; padding: 0 12px; align-content: start; }
+.zijbalk .klantenlijst { overflow-y: auto; overflow-x: hidden; flex: 1; margin: 0 -12px; padding: 0 12px; align-content: start; }
 .zijlink {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 10px; border-radius: var(--r);
@@ -236,7 +236,7 @@ table.raster { border-collapse: separate; border-spacing: 0; width: 100%; table-
 .raster td + td, .raster th + th { border-left: 1px solid var(--lijn); }
 .raster thead th { position: sticky; top: 0; z-index: 3; background: var(--papier); padding: 12px 12px 10px; text-align: left; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--lijn-sterk); }
 .raster thead th .aantal { font-weight: 400; color: var(--tekst-licht); margin-left: 4px; }
-.raster .datumkol { width: 84px; position: sticky; left: 0; z-index: 2; background: var(--papier); }
+.raster .datumkol { width: 156px; position: sticky; left: 0; z-index: 2; background: var(--papier); }
 .raster thead .datumkol { z-index: 4; }
 .raster td.datumkol { padding: 10px 10px 10px 14px; }
 .dagnr { display: block; font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
@@ -499,3 +499,32 @@ table.inricht .opslagstatus { width: 128px; }
 .demoknoppen button:focus-visible { outline: 2px solid var(--turkoois); }
 .welkomlijst { display: grid; gap: 12px; margin: 14px 0; }
 .welkomlijst p { margin: 2px 0 0; }
+
+/* Feest- en actiedagen in de datumkolom */
+.dagen { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.dagen li { font-size: 11.5px; line-height: 1.3; padding-left: 9px; position: relative; color: var(--tekst-zacht); }
+.dagen li::before { content: ""; position: absolute; left: 0; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--lijn-sterk); }
+.dagen li.feestdag { color: var(--tekst); font-weight: 600; }
+.dagen li.feestdag::before { background: var(--turkoois-rand); }
+.raster tr.weekend .dagen li.feestdag { color: var(--tekst); }
+.klein-vinkje { font-size: 13px; color: var(--tekst-zacht); }
+.cel .pijler { font-size: 10.5px; font-weight: 500; padding: 0 6px; border-radius: 8px; background: rgb(0 0 0 / 7%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+
+/* Klantenlijst in de zijbalk: menu en direct hernoemen */
+.zijrij { position: relative; display: flex; align-items: center; }
+.zijrij > .zijlink { flex: 1; min-width: 0; padding-right: 34px; }
+.zijmeer { all: unset; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: #c9cbcb; cursor: pointer; opacity: 0; }
+.zijrij:hover .zijmeer, .zijmeer:focus-visible, .zijrij:has(.zijlink.actief) .zijmeer { opacity: 1; }
+.zijmeer:hover { background: rgb(255 255 255 / 12%); color: #fff; }
+.zijmeer:focus-visible { outline: 2px solid var(--turkoois); }
+.zijnaam-invoer { height: 34px; margin: 1px 0; background-color: #fff; color: var(--tekst); border-color: var(--turkoois); }
+@media (hover: none) { .zijmeer { opacity: 1; } }
+.plakkerig { position: sticky; top: 16px; }
+.demo-accounts { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--lijn); }
+.demo-accounts h2 { font-size: 15px; margin-bottom: 4px; }
+.demo-accounts .zacht { margin-bottom: 10px !important; }
+.demo-accounts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.demo-accounts button { all: unset; box-sizing: border-box; width: 100%; display: grid; gap: 1px; padding: 9px 12px; border: 1px solid var(--lijn-sterk); border-radius: var(--r); cursor: pointer; font-size: 13px; }
+.demo-accounts button:hover { border-color: var(--inkt); }
+.demo-accounts button:focus-visible { outline: 2px solid var(--inkt); }
+.demo-accounts button span { color: var(--tekst-zacht); }

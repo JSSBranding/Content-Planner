@@ -107,11 +107,14 @@ export function buildSeed(today) {
   counter = 0;
   const t = iso(today);
   const created = new Date(today.getTime() - 20 * 86400000).toISOString();
+  // Demo-accounts, één per rol. Wachtwoord voor allemaal: demo-wachtwoord (bewaard als hash).
+  const PASSWORD_HASH = 'c1cf012eef5880cf58f15b27bbfdefa994fcaf742bb8e5f4f0095458257fc868';
+  const account = (id, name, email, role) => ({ id, name, email, role, created_at: created, password_hash: PASSWORD_HASH, demoAccount: true });
   const users = [
-    { id: 'u-lisa', name: 'Lisa Jansen', email: 'lisa@voorbeeld.nl', role: 'social_media_manager', created_at: created },
-    { id: 'u-sam', name: 'Sam de Wit', email: 'sam@voorbeeld.nl', role: 'medewerker', created_at: created },
-    { id: 'u-vera', name: 'Vera Vormgever', email: 'vera@voorbeeld.nl', role: 'vormgever', created_at: created },
-    { id: 'u-joost', name: 'Joost Beheer', email: 'joost@voorbeeld.nl', role: 'admin', created_at: created },
+    account('u-chef', 'Joost (chefke)', 'chefkes@demo.nl', 'admin'),
+    account('u-lisa', 'Lisa Jansen', 'smm@demo.nl', 'social_media_manager'),
+    account('u-vera', 'Vera van Branding', 'branding@demo.nl', 'vormgever'),
+    account('u-sam', 'Sam (stage)', 'stage@demo.nl', 'medewerker'),
   ];
 
   const bakkerij = {
@@ -120,15 +123,21 @@ export function buildSeed(today) {
     tone_of_voice: 'Warm, nuchter, je-vorm. Af en toe een emoji, nooit overdreven.',
     content_pillars: ['Vakmanschap', 'Team', 'Aanbod', 'Buurt'], channels: ['instagram', 'facebook', 'linkedin'], posts_per_week: 3,
     ai_memory: 'Geen prijzen noemen.\nSanne liever niet herkenbaar in beeld.\nLinkedIn zakelijker houden, gericht op bedrijven in de buurt.',
+    context: 'Familiebakkerij sinds 1974, nu in handen van Jan de Vries. Alles wordt dagelijks vers gebakken in eigen bakkerij achter de winkel. Bekend om zuurdesembrood, appeltaart van oma en croissants. Sinds kort een nieuwe steenoven. Levert ook aan bedrijven in de buurt (vergaderingen, borrels).',
+    target_audience: 'Gezinnen en ouderen in Utrecht-Oost; kantoren en zzp\'ers in de buurt voor catering.',
+    website: 'www.bakkerijdevries-voorbeeld.nl', contact: 'Jan de Vries, eigenaar (bij voorkeur via WhatsApp)',
   };
   const fiets = {
     id: 'c-fiets', name: 'Fietsenmaker Van Dam', created_at: created, archived: false,
     strategy: 'Fietsenmaker en -winkel in Houten. Doel: meer onderhoudsafspraken en verkoop van e-bikes.',
     tone_of_voice: 'Behulpzaam en deskundig, je-vorm.', content_pillars: ['Onderhoud', 'E-bikes', 'Team'],
     channels: ['instagram', 'facebook'], posts_per_week: 2, ai_memory: 'Altijd verwijzen naar online afspraak maken.',
+    context: 'Fietsenmaker met werkplaats en winkel in Houten. Specialist in e-bikes en onderhoud; snelle reparaties terwijl je wacht.',
+    target_audience: 'Forenzen en gezinnen in Houten en omgeving, 35+.', website: 'www.vandamfietsen-voorbeeld.nl', contact: 'Kees van Dam',
   };
   const realClients = START_CLIENTS.map((name) => ({
     id: id('c'), name, created_at: created, archived: false, strategy: '', tone_of_voice: '', content_pillars: [], channels: [], posts_per_week: 3, ai_memory: '',
+    context: '', target_audience: '', website: '', contact: '',
   }));
 
   // Beeld (verzonnen voorbeeldfoto's)
@@ -188,7 +197,7 @@ export function buildSeed(today) {
       }
       calendar.push({
         id: id('k'), client_id: 'c-bakkerij', publish_date: date, suggested_time: { linkedin: '08:30', facebook: '19:30', instagram: '19:00' }[channel],
-        channel, body, topic: post.topic, source_info: `Contentpijler: ${post.pillar}`, internal_notes: notes, status,
+        channel, body, topic: post.topic, content_pillar: post.pillar, source_info: '', internal_notes: notes, status,
         assignee_id: status === 'placeholder_actie_nodig' ? 'u-sam' : date <= weekAhead && date >= t ? 'u-vera' : null,
         plan_id: null, created_by: 'u-lisa', created_at: created, updated_at: created,
         media: status === 'placeholder_actie_nodig' ? [] : [`m-${post.media}`],
@@ -211,7 +220,7 @@ export function buildSeed(today) {
       const done = date < t;
       calendar.push({
         id: id('k'), client_id: 'c-fiets', publish_date: date, suggested_time: channel === 'instagram' ? '19:00' : '19:30', channel,
-        body: channel === 'instagram' ? `${topic} 🚲\n\n${text}\n\n#fietsenmakervandam #houten` : text, topic, source_info: `Contentpijler: ${pillar}`,
+        body: channel === 'instagram' ? `${topic} 🚲\n\n${text}\n\n#fietsenmakervandam #houten` : text, topic, content_pillar: pillar, source_info: '',
         internal_notes: done ? 'Ingepland in Meta Business Suite' : '', status: done ? 'volledig_ingepland' : i % 3 === 2 ? 'placeholder_actie_nodig' : 'tekst_gereed',
         assignee_id: null, plan_id: null, created_by: 'u-lisa', created_at: created, updated_at: created, media: [`m-${m}`],
       });
@@ -244,12 +253,12 @@ export function buildSeed(today) {
   calendar.push({
     id: id('k'), client_id: 'c-bakkerij', publish_date: planDays[0], suggested_time: '12:00', channel: 'instagram',
     body: 'Nieuw: de spaarkaart is terug! Bij tien stempels een gratis brood naar keuze 🍞\n\n#bakkerijdevries #spaarkaart',
-    topic: 'Spaarkaart is terug', source_info: 'Handmatig toegevoegd op verzoek van de klant', internal_notes: '', status: 'tekst_gereed',
+    topic: 'Spaarkaart is terug', content_pillar: 'Aanbod', source_info: 'Handmatig toegevoegd op verzoek van de klant', internal_notes: '', status: 'tekst_gereed',
     assignee_id: null, plan_id: null, created_by: 'u-sam', created_at: created, updated_at: created, media: ['m-winkel'],
   });
 
   return {
-    version: 1, currentUserId: 'u-lisa', users,
+    version: 2, currentUserId: null, users,
     clients: [bakkerij, fiets, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };

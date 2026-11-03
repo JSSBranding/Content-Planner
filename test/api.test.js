@@ -215,3 +215,29 @@ test('klanten beheren: lijst toevoegen, hernoemen, archiveren en verwijderen', a
   assert.equal((await admin('GET', `/api/calendar/${item.id}`)).status, 404);
   assert.ok(!fs.existsSync(path.join(dataDir, 'uploads', kroeg.id)) || fs.readdirSync(path.join(dataDir, 'uploads', kroeg.id)).length === 0);
 });
+
+test('klantcontext en contentpijler per post', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Context Test', channels: ['instagram'], content_pillars: ['Team', 'Aanbod'] })).body;
+  const saved = (await admin('PATCH', `/api/clients/${c.id}`, { context: 'Familiebedrijf sinds 1974', target_audience: 'Gezinnen', website: 'www.voorbeeld.nl', contact: 'Jan' })).body;
+  assert.equal(saved.context, 'Familiebedrijf sinds 1974');
+  assert.equal(saved.target_audience, 'Gezinnen');
+  assert.equal(saved.website, 'www.voorbeeld.nl');
+
+  const post = (await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2026-12-01', channel: 'instagram', body: 'Hoi', content_pillar: 'Team' })).body;
+  assert.equal(post.content_pillar, 'Team');
+  assert.equal((await admin('PATCH', `/api/calendar/${post.id}`, { content_pillar: '' })).body.content_pillar, null, 'pijler is optioneel');
+  assert.equal((await designer('PATCH', `/api/calendar/${post.id}`, { content_pillar: 'Aanbod' })).status, 403);
+
+  // Een goedgekeurde planning neemt de pijler mee naar de kalender.
+  const plan = (await admin('POST', `/api/clients/${c.id}/plans`, { periodStart: '2027-02-01', periodEnd: '2027-02-28' })).body;
+  await admin('POST', `/api/plans/${plan.id}/submit`);
+  await admin('POST', `/api/plans/${plan.id}/approve`, {});
+  const cal = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-02-01&to=2027-02-28`)).body.items;
+  assert.ok(cal.length > 0 && cal.every((i) => ['Team', 'Aanbod'].includes(i.content_pillar)));
+  assert.ok(cal.every((i) => !i.source_info.includes('Contentpijler')), 'pijler staat niet meer in de broninformatie');
+});
+
+test('rollen heten Chefkes, Social media manager, Branding en Stage', async () => {
+  const roles = (await admin('GET', '/api/meta')).body.roles.map((r) => r.label);
+  assert.deepEqual(roles, ['Chefkes', 'Social media manager', 'Branding', 'Stage']);
+});

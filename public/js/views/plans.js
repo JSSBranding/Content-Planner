@@ -5,6 +5,7 @@ import {
 import { api, meta, can, channelLabel } from '../api.js';
 import { clientHeader } from './clients.js';
 import { pickMedia } from './media.js';
+import { inputSection } from './inbox.js';
 
 const PLAN_LABEL = {
   concept: 'Concept', in_controle: 'In controle', aanpassen: 'Aanpassen', goedgekeurd: 'Goedgekeurd', toegevoegd_aan_kalender: 'In kalender',
@@ -15,9 +16,9 @@ const period = (a, b) => `${fmtDate(a)} t/m ${fmtDate(b)}`;
 
 // ---------- Overzicht en nieuwe conceptplanning ----------
 
-export async function plansView({ clientId, tab }) {
-  const [{ client, head }, plans, inputs] = await Promise.all([
-    clientHeader(clientId, tab), api.get(`/clients/${clientId}/plans`), api.get(`/clients/${clientId}/inputs`),
+export async function plansView({ clientId, tab, rerender }) {
+  const [{ client, head }, plans, inputs, media] = await Promise.all([
+    clientHeader(clientId, tab), api.get(`/clients/${clientId}/plans`), api.get(`/clients/${clientId}/inputs`), api.get(`/clients/${clientId}/media`),
   ]);
   const next = monthBounds(shiftMonth(isoDate(new Date()).slice(0, 7), 1));
   const start = h('input', { type: 'date', value: next.from, required: true });
@@ -59,9 +60,14 @@ export async function plansView({ clientId, tab }) {
         h('div', { class: 'zacht' }, `Gemaakt ${fmtDateTime(p.created_at)}${p.ai_source === 'voorbeeld' ? ' (voorbeeldmodus)' : ''}`)),
       h('td', {}, planChip(p.status)),
       h('td', {}, p.item_count),
-      h('td', { class: 'zacht' }, p.approved_by_name ? `${p.approved_by_name}, ${fmtDateTime(p.approved_at)}` : 'Nog niet'))))) : h('div', { class: 'paneelblok' }, emptyState('Nog geen planningen. Laat rechts een eerste voorstel maken.'));
+      h('td', { class: 'zacht' }, p.approved_by_name ? `${p.approved_by_name}, ${fmtDateTime(p.approved_at)}` : 'Nog niet'))))) : h('div', { class: 'paneelblok' }, emptyState('Nog geen planningen. Laat rechts een voorstel maken op basis van de klantinput.'));
 
-  return page(head(), h('div', { class: form ? 'zij-kolom' : '' }, h('div', {}, list), form));
+  return page(head(), h('div', { class: form ? 'zij-kolom' : '' },
+    h('div', {},
+      inputSection({ clientId, inputs, media, rerender }),
+      h('h2', { style: { margin: '4px 0 12px' } }, 'Conceptplanningen'),
+      list),
+    form ? h('div', { class: 'plakkerig' }, form) : null));
 }
 
 // ---------- Eén conceptplanning beoordelen ----------

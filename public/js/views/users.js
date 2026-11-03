@@ -49,12 +49,7 @@ export async function usersView({ rerender }) {
     });
   }
 
-  const rights = [
-    ['Social media manager', 'maakt en keurt conceptplanningen goed, beheert klanten'],
-    ['Medewerker', 'bewerkt teksten en beeld, voegt klantinput toe'],
-    ['Grafisch vormgever', 'bekijkt, kopieert en downloadt; wijzigt status en opmerkingen'],
-    ['Beheerder', 'alles, inclusief het team'],
-  ];
+  const rights = meta.roles.map((r) => [r.label, r.description]);
   return page(pageHead({ title: 'Team en rechten', sub: `${users.length} ${users.length === 1 ? 'persoon heeft' : 'mensen hebben'} toegang` }),
     h('div', { class: 'zij-kolom' },
       h('div', {},

@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS clients (
   channels        TEXT NOT NULL DEFAULT '[]',        -- JSON: ["instagram", ...]
   posts_per_week  INTEGER NOT NULL DEFAULT 3,        -- afgesproken publicatiefrequentie
   ai_memory       TEXT NOT NULL DEFAULT '',          -- AI-klantgeheugen
+  context         TEXT NOT NULL DEFAULT '',          -- over de klant: achtergrond, producten, USP's
+  target_audience TEXT NOT NULL DEFAULT '',          -- doelgroep
+  website         TEXT NOT NULL DEFAULT '',
+  contact         TEXT NOT NULL DEFAULT '',          -- contactpersoon bij de klant
   archived        INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -115,6 +119,7 @@ CREATE TABLE IF NOT EXISTS calendar_items (
   channel         TEXT NOT NULL,
   body            TEXT NOT NULL DEFAULT '',          -- tekst voor dit kanaal
   topic           TEXT NOT NULL DEFAULT '',
+  content_pillar  TEXT,                              -- optioneel
   source_info     TEXT NOT NULL DEFAULT '',          -- klantinput / broninformatie
   internal_notes  TEXT NOT NULL DEFAULT '',
   status          TEXT NOT NULL DEFAULT 'placeholder_actie_nodig'

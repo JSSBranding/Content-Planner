@@ -111,8 +111,7 @@ export async function clientsView({ query }) {
 
 const TABS = [
   ['kalender', 'Contentkalender', 'kalender'],
-  ['planning', 'Conceptplanning', 'planning'],
-  ['input', 'Klantinput', 'inbox'],
+  ['planning', 'Input en planning', 'planning'],
   ['media', 'Beeld', 'beeld'],
   ['shoots', 'Contentshoots', 'camera'],
   ['instellingen', 'Klantprofiel', 'profiel'],
@@ -121,7 +120,7 @@ const TABS = [
 // Kop met klantnaam, acties en tabbladen boven elk klantscherm.
 export async function clientHeader(clientId, tab) {
   const client = await api.get(`/clients/${clientId}`);
-  const counts = { planning: client.open_plans, input: client.open_inputs };
+  const counts = { planning: client.open_plans + client.open_inputs };
   const tabs = h('nav', { class: 'tabs', 'aria-label': 'Onderdelen' }, TABS.map(([key, label, ic]) =>
     h('a', { href: `#/klant/${clientId}/${key}`, class: tab === key ? 'actief' : '', 'aria-current': tab === key ? 'page' : null },
       icon(ic, { size: 16 }), label, counts[key] ? h('span', { class: 'teller' }, counts[key]) : null)));

@@ -24,6 +24,7 @@ copy('src/planning/plan.js', 'js/demo/lib/plan.js');
 copy('src/ai/voorbeeld.js', 'js/demo/lib/voorbeeld.js');
 copy('server/whatsapp.js', 'js/demo/lib/whatsapp.js');
 copy('server/constants.js', 'js/demo/lib/constants.js');
+copy('src/dagen.js', 'gedeeld/dagen.js');
 
 // Klantnamen uit de echte startlijst
 const names = fs.readFileSync(r('db/startklanten.txt'), 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));

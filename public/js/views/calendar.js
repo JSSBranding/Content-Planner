@@ -5,6 +5,7 @@ import {
 import { api, meta, can, channelLabel, statusLabel, statusStyle } from '../api.js';
 import { clientHeader } from './clients.js';
 import { pickMedia } from './media.js';
+import { daysBetween } from '../../gedeeld/dagen.js';
 
 // Scrollpositie per maand bewaren, zodat de kalender na opslaan niet terugspringt.
 const scrollMemory = new Map();
@@ -26,6 +27,12 @@ export async function calendarView({ clientId, tab, query, rerender }) {
   const byCell = new Map(items.map((i) => [`${i.publish_date}|${i.channel}`, i]));
   const ordered = () => [...items].sort((a, b) => a.publish_date.localeCompare(b.publish_date) || channels.indexOf(a.channel) - channels.indexOf(b.channel));
 
+  // Feest- en actiedagen naast de datums. Actiedagen kun je verbergen; die keuze wordt onthouden.
+  let showActionDays = true;
+  try { showActionDays = localStorage.getItem('jcs-actiedagen') !== 'uit'; } catch { /* geen opslag */ }
+  const specialDays = daysBetween(from, to).filter((d) => showActionDays || d.type === 'feestdag');
+  const daysOn = (date) => specialDays.filter((d) => d.date === date);
+
   // ---------- Balk boven de kalender ----------
 
   const filterBar = h('div', { class: `statusfilter ${statusFilter ? 'gefilterd' : ''}`, role: 'group', 'aria-label': 'Filter op status' },
@@ -46,7 +53,12 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       h('button', { type: 'button', 'aria-label': 'Volgende maand', onclick: () => { location.hash = url(shiftMonth(month, 1)); } }, icon('rechts'))),
     month !== today.slice(0, 7) ? h('button', { class: 'knop', onclick: () => { location.hash = url(today.slice(0, 7)); } }, 'Naar vandaag') : null,
     h('div', { style: { flex: '1' } }),
-    filterBar);
+    filterBar,
+    h('label', { class: 'vinkje klein-vinkje', title: 'Thema- en actiedagen zoals Dierendag en Black Friday' },
+      h('input', {
+        type: 'checkbox', checked: showActionDays,
+        onchange: (e) => { try { localStorage.setItem('jcs-actiedagen', e.target.checked ? 'aan' : 'uit'); } catch { /* geen opslag */ } rerender(); },
+      }), 'Actiedagen tonen'));
 
   // ---------- Raster ----------
 
@@ -59,7 +71,8 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       h('td', { class: 'datumkol' },
         weekStart ? h('span', { class: 'weeknr' }, `week ${isoWeek(d)}`) : null,
         h('span', { class: 'dagnr' }, date.getDate()),
-        h('span', { class: 'dagnaam' }, d === today ? 'vandaag' : date.toLocaleDateString('nl-NL', { weekday: 'short' }))),
+        h('span', { class: 'dagnaam' }, d === today ? 'vandaag' : date.toLocaleDateString('nl-NL', { weekday: 'short' })),
+        daysOn(d).length ? h('ul', { class: 'dagen' }, daysOn(d).map((x) => h('li', { class: x.type, title: x.type === 'feestdag' ? 'Feestdag' : 'Actiedag' }, x.name))) : null),
       channels.map((ch) => h('td', { class: 'kanaalcel' }, cell(d, ch)))));
   }
 
@@ -80,6 +93,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       },
       h('div', { class: 'celkop' },
         h('span', { class: 'tijd' }, item.suggested_time ?? ''),
+        item.content_pillar ? h('span', { class: 'pijler', title: 'Contentpijler' }, item.content_pillar) : null,
         h('span', { class: 'rechts' },
           item.internal_notes ? h('span', { title: `Opmerking: ${item.internal_notes}` }, icon('notitie', { size: 14 })) : null,
           item.assignee_name ? h('span', { class: 'wie', title: item.assignee_name }, initials(item.assignee_name)) : null)),
@@ -167,6 +181,9 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       for (const [prop, v] of Object.entries(statusStyle(status.value))) status.style.setProperty(prop, v);
     }
     paintStatus();
+    const pillarOptions = [...new Set([...client.content_pillars, item.content_pillar].filter(Boolean))];
+    const pillar = h('select', { value: item.content_pillar ?? '', disabled: !contentEditable, onchange: markDirty },
+      h('option', { value: '' }, 'Geen pijler'), pillarOptions.map((p) => h('option', { value: p }, p)));
     const assignee = h('select', { value: item.assignee_id ?? '', disabled: !contentEditable, onchange: markDirty },
       h('option', { value: '' }, 'Niemand'), users.map((u) => h('option', { value: u.id }, u.name)));
     const topic = h('input', { type: 'text', value: item.topic, disabled: !contentEditable, oninput: markDirty, placeholder: 'Waar gaat deze post over?' });
@@ -175,7 +192,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const count = () => { counter.textContent = `${body.value.length} tekens`; };
     count();
     const source = h('textarea', { rows: 3, value: item.source_info, disabled: !contentEditable, oninput: markDirty });
-    const notes = h('textarea', { rows: 3, value: item.internal_notes, disabled: !statusEditable, oninput: markDirty, placeholder: 'Bijv. instructies voor de vormgever, of waar de post is ingepland' });
+    const notes = h('textarea', { rows: 3, value: item.internal_notes, disabled: !statusEditable, oninput: markDirty, placeholder: 'Bijv. instructies voor branding, of waar de post is ingepland' });
 
     const mediaHost = h('div');
     function drawMedia() {
@@ -212,7 +229,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       const payload = { status: status.value, internal_notes: notes.value };
       if (contentEditable) {
         Object.assign(payload, {
-          publish_date: date.value, suggested_time: time.value || null, channel: channel.value, topic: topic.value,
+          publish_date: date.value, suggested_time: time.value || null, channel: channel.value, topic: topic.value, content_pillar: pillar.value,
           body: body.value, source_info: source.value, assignee_id: assignee.value || null, media: mediaList.map((m) => m.id),
         });
       }
@@ -322,7 +339,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         ] : null,
         h('button', { class: 'knop kaal icoonknop', 'aria-label': 'Sluiten', title: 'Sluiten (Esc)', onclick: () => tryClose() }, icon('sluit'))),
       h('div', { class: 'paneel-inhoud' },
-        h('div', { class: 'rij' }, field('Status', status), field('Verantwoordelijke', assignee)),
+        h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee)),
         h('div', { class: 'veld' },
           h('div', { class: 'tekstkop' },
             h('label', { for: 'celtekst' }, `Tekst voor ${channelLabel(item.channel)}`), counter,

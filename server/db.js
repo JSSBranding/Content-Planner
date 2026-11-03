@@ -15,7 +15,23 @@ export function openDb(file = path.join(DATA_DIR, 'jouw-content-studio.sqlite'))
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(fs.readFileSync(path.join(root, 'db', 'schema.sql'), 'utf8'));
+  migrate(db);
   return db;
+}
+
+// Kolommen die later zijn toegevoegd; bestaande databases krijgen ze erbij zonder gegevensverlies.
+const ADDED_COLUMNS = [
+  ['clients', 'context', "TEXT NOT NULL DEFAULT ''"],
+  ['clients', 'target_audience', "TEXT NOT NULL DEFAULT ''"],
+  ['clients', 'website', "TEXT NOT NULL DEFAULT ''"],
+  ['clients', 'contact', "TEXT NOT NULL DEFAULT ''"],
+  ['calendar_items', 'content_pillar', 'TEXT'],
+];
+function migrate(db) {
+  for (const [table, column, type] of ADDED_COLUMNS) {
+    const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
 }
 
 export const newId = () => crypto.randomUUID();

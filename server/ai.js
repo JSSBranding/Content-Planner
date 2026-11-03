@@ -4,6 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CHANNELS } from './constants.js';
 import { datesBetween, examplePlan, exampleTexts, exampleShoots } from '../src/ai/voorbeeld.js';
+import { daysBetween } from '../src/dagen.js';
 
 export { datesBetween, examplePlan };
 
@@ -89,13 +90,16 @@ Belangrijk over de werkwijze:
 function clientContext(client) {
   return [
     `Klant: ${client.name}`,
+    `Over de klant: ${redact(client.context) || '(niet ingevuld)'}`,
+    `Doelgroep: ${redact(client.target_audience) || '(niet ingevuld)'}`,
+    client.website ? `Website: ${client.website}` : '',
     `Strategie: ${redact(client.strategy) || '(niet ingevuld)'}`,
     `Tone of voice: ${redact(client.tone_of_voice) || '(niet ingevuld)'}`,
     `Contentpijlers: ${client.content_pillars.join(', ') || '(geen)'}`,
     `Kanalen: ${client.channels.map(channelLabel).join(', ')}`,
     `Afgesproken frequentie: ${client.posts_per_week} posts per week`,
     `AI-klantgeheugen (eerdere afspraken en lessen):\n${redact(client.ai_memory) || '(leeg)'}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 // ---------- Planningsvoorstel ----------
@@ -140,6 +144,7 @@ export async function proposePlan({ client, periodStart, periodEnd, inputs, medi
   const prompt = [
     clientContext(client),
     `\nPeriode: ${periodStart} t/m ${periodEnd}.`,
+    `\nFeest- en actiedagen in deze periode (gebruik ze alleen als ze passen bij de klant):\n${daysBetween(periodStart, periodEnd).map((d) => `- ${d.date} ${d.name}`).join('\n') || '(geen)'}`,
     `\nAangeleverde klantinput (id — inhoud):`,
     inputs.length ? inputs.map((i) => `- ${i.id} — ${i.title ? `${i.title}: ` : ''}${redact(i.body).slice(0, 1500)}${i.instructions ? ` [instructies: ${redact(i.instructions)}]` : ''}`).join('\n') : '(geen; maak algemene content op basis van de strategie)',
     `\nBeschikbaar beeldmateriaal (id — soort — bestandsnaam — beschrijving — tags — eerder gebruikt):`,
