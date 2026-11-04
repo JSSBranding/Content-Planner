@@ -5,7 +5,7 @@ import {
 import { api, meta, can, channelLabel, statusLabel, statusStyle } from '../api.js';
 import { clientHeader } from './clients.js';
 import { pickMedia } from './media.js';
-import { clientDaysBetween, describeRhythm } from '../../gedeeld/dagen.js';
+import { clientDaysBetween, describeRhythm, repeatDates, ruleFromDate } from '../../gedeeld/dagen.js';
 import { needsAttention, ATTENTION_DAYS } from '../../gedeeld/rapport.js';
 
 // Scrollpositie per maand bewaren, zodat de kalender na opslaan niet terugspringt.
@@ -295,6 +295,31 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     }
     const notes = h('textarea', { rows: 3, value: item.internal_notes, disabled: !statusEditable, oninput: markDirty, placeholder: 'Bijv. instructies voor branding, of waar de post is ingepland' });
 
+    // Nieuwe post herhalen: het ritme volgt uit de gekozen datum. Bezette dagen worden overgeslagen.
+    const repeat = h('select', { 'aria-label': 'Herhalen', onchange: () => { markDirty(); drawRepeat(); } });
+    const repeatUntil = h('input', { type: 'date', 'aria-label': 'Herhalen tot en met', onchange: () => { markDirty(); drawRepeat(); } });
+    const saveRule = h('input', { type: 'checkbox', checked: true });
+    const repeatInfo = h('div', { class: 'hulp' });
+    const repeatExtra = h('div', { class: 'herhaal-extra', hidden: true },
+      h('div', { class: 'rij' }, field('Tot en met', repeatUntil), h('div', { class: 'veld' }, h('label', {}, ' '), repeatInfo)),
+      h('label', { class: 'vinkje klein-vinkje' }, saveRule, 'Ook bewaren bij Terugkerende posts van deze klant, om later verder te plaatsen'));
+    function drawRepeat() {
+      const first = date.value;
+      const chosen = repeat.value;
+      fill(repeat, [['', 'Niet herhalen'], ['week', null], ['twee-weken', null], ['maand-weekdag', null], ['maand-dag', null]].map(([v, label]) =>
+        h('option', { value: v }, label ?? (first ? describeRhythm(ruleFromDate(v, first)) : v))));
+      repeat.value = chosen;
+      repeatExtra.hidden = !repeat.value;
+      if (!repeat.value) return;
+      if (!repeatUntil.value || repeatUntil.value <= first) repeatUntil.value = addDays(first, 90);
+      repeatUntil.min = addDays(first, 1);
+      repeatUntil.max = addDays(first, 366);
+      const n = repeatDates(repeat.value, first, repeatUntil.value).length + 1;
+      repeatInfo.textContent = `Komt op ${n} datum${n === 1 ? '' : 's'} in de kalender, met dezelfde tekst en hetzelfde beeld. Staat er op een dag al iets, dan wordt die dag overgeslagen.`;
+    }
+    date.addEventListener('change', drawRepeat);
+    if (isNew) drawRepeat();
+
     const mediaHost = h('div');
     function drawMedia() {
       fill(mediaHost, mediaList.length ? h('div', { class: 'beeldlijst' }, mediaList.map((m, i) => h('div', { class: 'beeld' },
@@ -341,8 +366,13 @@ export async function calendarView({ clientId, tab, query, rerender }) {
           // Zonder eigen keuze bepaalt de server de status op basis van tekst en beeld.
           if (!statusTouched) delete payload.status;
           const posts = chosen.map((ch) => ({ channel: ch, body: perChannelToggle.checked ? perChannelTexts[ch]?.value ?? '' : body.value }));
-          await api.post(`/clients/${clientId}/calendar/batch`, { ...payload, date: payload.publish_date, time: payload.suggested_time, posts });
-          toast(chosen.length === 1 ? 'Post toegevoegd' : `Post toegevoegd op ${chosen.length} kanalen`);
+          const repeatPayload = repeat.value ? { rhythm: repeat.value, until: repeatUntil.value, saveRule: saveRule.checked } : undefined;
+          const res = await api.post(`/clients/${clientId}/calendar/batch`, { ...payload, date: payload.publish_date, time: payload.suggested_time, posts, repeat: repeatPayload });
+          if (repeatPayload) {
+            toast(`Herhalende post: ${res.created} posts op ${res.dates} datums toegevoegd${res.skipped ? `, ${res.skipped} overgeslagen omdat daar al iets stond` : ''}${repeatPayload.saveRule ? '. Ook bewaard bij Terugkerende posts.' : ''}`);
+          } else {
+            toast(chosen.length === 1 ? 'Post toegevoegd' : `Post toegevoegd op ${chosen.length} kanalen`);
+          }
         } else {
           await api.patch(`/calendar/${item.id}`, payload);
           toast('Wijzigingen opgeslagen');
@@ -508,6 +538,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee), assigneeList),
         isNew ? h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes, otherChannelsButton),
           h('label', { class: 'vinkje klein-vinkje', style: { marginTop: '10px' } }, perChannelToggle, 'Andere tekst per kanaal')) : null,
+        isNew ? h('div', { class: 'veld' }, h('label', {}, icon('geschiedenis', { size: 15 }), ' Herhalen'), repeat, repeatExtra) : null,
         perChannelHost,
         h('div', { class: 'veld' },
           h('div', { class: 'tekstkop' },

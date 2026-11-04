@@ -5,7 +5,7 @@ import {
   addToCalendar, findConflicts, cellKey, initialStatus, PLAN_STATUS,
 } from './lib/plan.js';
 import { examplePlan, exampleShoots, exampleMemory } from './lib/voorbeeld.js';
-import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm } from './lib/dagen.js';
+import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm, repeatDates, ruleFromDate, RHYTHMS } from './lib/dagen.js';
 import { buildReport, needsAttention, ATTENTION_DAYS } from './lib/rapport.js';
 import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
@@ -664,12 +664,29 @@ route('POST', '/clients/:id/calendar/batch', ({ id }, b) => {
     fail(409, `Op deze datum staat al een post op ${taken.map((p) => CHANNELS.find((c) => c.key === p.channel).label).join(' en ')}. Haal dat kanaal weg of kies een andere datum.`, { takenChannels: taken.map((p) => p.channel) });
   }
   const media = Array.isArray(b.media) ? b.media : [];
-  const items = posts.map((p) => insertItem({
-    clientId: id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
-    pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
-    status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media,
-  }));
-  return { items: items.map(mapItem) };
+  const repeat = b.repeat?.rhythm ? b.repeat : null;
+  if (repeat && !RHYTHMS.includes(repeat.rhythm)) fail(400, 'Kies hoe vaak de post terugkomt.');
+  if (repeat && !(isDate(repeat.until) && repeat.until > b.date)) fail(400, 'Kies een einddatum na de eerste datum.');
+  const dates = [b.date, ...(repeat ? repeatDates(repeat.rhythm, b.date, repeat.until) : [])];
+  let skipped = 0;
+  const items = [];
+  for (const date of dates) {
+    for (const p of posts) {
+      if (date !== b.date && cellTaken(id, date, p.channel)) { skipped++; continue; }
+      items.push(insertItem({
+        clientId: id, date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
+        pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
+        status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media,
+      }));
+    }
+  }
+  if (repeat?.saveRule) {
+    const client = clientOr404(id);
+    const rule = { ...ruleFromDate(repeat.rhythm, b.date), title: str(b.topic, 200).trim() || str(posts[0].body, 60).split('\n')[0].trim() || 'Terugkerende post',
+      channels: posts.map((p) => p.channel), time: optTime(b.time), pillar: str(b.content_pillar, 100).trim() || null, active: true };
+    client.recurring = cleanRecurring([...(client.recurring ?? []), rule], CHANNEL_KEYS, fail);
+  }
+  return { items: items.slice(0, posts.length).map(mapItem), created: items.length, dates: dates.length, skipped };
 });
 route('GET', '/calendar/:id', ({ id }) => {
   const item = itemOr404(id);

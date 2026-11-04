@@ -269,3 +269,20 @@ export function describeRhythm(r) {
   if (r.rhythm === 'maand-dag') return `Elke maand op de ${r.day}e`;
   return `Elke ${nth[r.nth]} ${days[r.weekday]} van de maand`;
 }
+
+// ---------- Herhalen vanuit "Post toevoegen" ----------
+// Het ritme volgt uit de datum van de eerste post: dezelfde weekdag, dezelfde n-de weekdag van de maand of dezelfde datum.
+export const REPEAT_LIMIT_DAYS = 366;
+export function ruleFromDate(rhythm, date) {
+  const d = new Date(`${date}T12:00:00Z`);
+  const weekday = d.getUTCDay() || 7;
+  const n = Math.ceil(d.getUTCDate() / 7);
+  return { rhythm, weekday, nth: n >= 5 ? -1 : n, day: d.getUTCDate(), start: rhythm === 'twee-weken' ? date : null };
+}
+/** Herhaaldatums ná de eerste datum, tot en met 'until' (maximaal een jaar vooruit). */
+export function repeatDates(rhythm, date, until) {
+  if (!RHYTHMS.includes(rhythm) || !isIsoDate(date) || !isIsoDate(until) || until <= date) return [];
+  const limit = shift(Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)), REPEAT_LIMIT_DAYS);
+  const next = shift(Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)), 1);
+  return recurringDates(ruleFromDate(rhythm, date), next, until < limit ? until : limit);
+}

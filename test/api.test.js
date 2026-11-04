@@ -547,3 +547,25 @@ test('klantgeheugen: afspraken voorstellen uit opmerkingen (zonder AI)', async (
   assert.ok(!rules.some((r) => /prijzen/i.test(r)), 'bestaande afspraak wordt niet opnieuw voorgesteld');
   assert.equal((await designer('POST', `/api/clients/${c.id}/afspraken-voorstel`)).status, 403);
 });
+
+test('post toevoegen met herhalen: bezette dagen overgeslagen, regel bewaard', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Herhaal Test', channels: ['instagram', 'facebook'] })).body;
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-07-12', channel: 'facebook', body: 'Al bezet' });
+  assert.equal((await admin('POST', `/api/clients/${c.id}/calendar/batch`, { date: '2027-07-05', posts: [{ channel: 'instagram', body: 'x' }], repeat: { rhythm: 'week', until: '2027-07-01' } })).status, 400, 'einddatum voor de eerste datum');
+  const res = await admin('POST', `/api/clients/${c.id}/calendar/batch`, {
+    date: '2027-07-05', time: '09:00', topic: 'Weekstart', posts: [{ channel: 'instagram', body: 'Fijne week!' }, { channel: 'facebook', body: 'Fijne week!' }],
+    repeat: { rhythm: 'week', until: '2027-07-26', saveRule: true },
+  });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.dates, 4, '5, 12, 19 en 26 juli');
+  assert.equal(res.body.created, 7, '8 posts min 1 bezette dag');
+  assert.equal(res.body.skipped, 1);
+  const items = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-07-01&to=2027-07-31`)).body.items;
+  assert.equal(items.find((i) => i.publish_date === '2027-07-12' && i.channel === 'facebook').body, 'Al bezet');
+  assert.equal(items.filter((i) => i.body === 'Fijne week!').length, 7);
+  const rule = (await admin('GET', `/api/clients/${c.id}`)).body.recurring[0];
+  assert.equal(rule.title, 'Weekstart');
+  assert.equal(rule.rhythm, 'week');
+  assert.equal(rule.weekday, 1, 'maandag, afgeleid van de eerste datum');
+  assert.deepEqual(rule.channels, ['instagram', 'facebook']);
+});

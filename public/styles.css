@@ -730,3 +730,5 @@ table.rapport tfoot td { border-top: 2px solid var(--lijn); font-weight: 600; pa
 .aandachtlijst .wanneer { font-weight: 600; }
 .aandachtlijst .wat { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 700px) { .aandachtlijst a { grid-template-columns: 1fr; gap: 4px; } }
+.herhaal-extra { margin-top: 10px; display: grid; gap: 6px; }
+.herhaal-extra .veld { margin-bottom: 0; }

@@ -22,7 +22,7 @@ import {
   PlanError, createPlan, submitForReview, editManually, applyAiRedistribution, regenerate, approve,
   addToCalendar, findConflicts, cellKey, initialStatus, PLAN_STATUS,
 } from '../src/planning/plan.js';
-import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm } from '../src/dagen.js';
+import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm, repeatDates, ruleFromDate, RHYTHMS } from '../src/dagen.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -882,12 +882,34 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       fail(409, `Op deze datum staat al een post op ${taken.map((p) => CHANNELS.find((c) => c.key === p.channel).label).join(' en ')}. Haal dat kanaal weg of kies een andere datum.`, { takenChannels: taken.map((p) => p.channel) });
     }
     const media = Array.isArray(b.media) ? b.media : [];
-    const ids = transaction(db, () => posts.map((p) => insertCalendarItem({
-      clientId: client.id, date: b.date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
-      pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
-      status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media, createdBy: req.user.id,
-    })));
-    res.status(201).json({ items: ids.map((id) => getCalendarItem(db, id)) });
+    // Herhalen: dezelfde post ook op de volgende datums van het ritme. Een bezette dag wordt overgeslagen, nooit overschreven.
+    const repeat = b.repeat?.rhythm ? b.repeat : null;
+    if (repeat && !RHYTHMS.includes(repeat.rhythm)) fail(400, 'Kies hoe vaak de post terugkomt.');
+    if (repeat && !(isDate(repeat.until) && repeat.until > b.date)) fail(400, 'Kies een einddatum na de eerste datum.');
+    const dates = [b.date, ...(repeat ? repeatDates(repeat.rhythm, b.date, repeat.until) : [])];
+    const isTaken = db.prepare('SELECT 1 FROM calendar_items WHERE client_id = ? AND publish_date = ? AND channel = ?');
+    let skipped = 0;
+    const ids = transaction(db, () => {
+      const created = [];
+      for (const date of dates) {
+        for (const p of posts) {
+          if (date !== b.date && isTaken.get(client.id, date, p.channel)) { skipped++; continue; }
+          created.push(insertCalendarItem({
+            clientId: client.id, date, time: optTime(b.time), channel: p.channel, body: str(p.body), topic: str(b.topic, 300),
+            pillar: str(b.content_pillar, 100).trim(), sourceInfo: str(b.source_info), notes: str(b.internal_notes),
+            status: b.status ?? initialStatus({ body: p.body, media }), assignee: b.assignee, media, createdBy: req.user.id,
+          }));
+        }
+      }
+      // Ook bewaren als terugkerende post van de klant, om later verder te plaatsen.
+      if (repeat?.saveRule) {
+        const rule = { ...ruleFromDate(repeat.rhythm, b.date), title: str(b.topic, 200).trim() || str(posts[0].body, 60).split('\n')[0].trim() || 'Terugkerende post',
+          channels: posts.map((p) => p.channel), time: optTime(b.time), pillar: str(b.content_pillar, 100).trim() || null, active: true };
+        db.prepare('UPDATE clients SET recurring = ? WHERE id = ?').run(json.str(cleanRecurring([...client.recurring, rule], CHANNEL_KEYS, fail)), client.id);
+      }
+      return created;
+    });
+    res.status(201).json({ items: ids.slice(0, posts.length).map((id) => getCalendarItem(db, id)), created: ids.length, dates: dates.length, skipped });
   });
 
   api.get('/calendar/:id', (req, res) => {
