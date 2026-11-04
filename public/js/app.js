@@ -1,4 +1,4 @@
-import { h, fill, icon, showError, initials, modal, toast, openMenu } from './ui.js';
+import { h, fill, icon, showError, initials, toast, openMenu, downloadUrl } from './ui.js';
 import { api, meta, loadMeta, can, roleLabel } from './api.js';
 import { loginView, setupView } from './views/login.js';
 import { clientsView } from './views/clients.js';
@@ -91,7 +91,6 @@ function sidebar(clients, route) {
     h('div', { class: 'voet' },
       meta.demo ? null : h('div', { class: `ai-status ${meta.ai.available ? 'aan' : ''}`, title: meta.ai.available ? `Model: ${meta.ai.model}` : 'Op de server is nog geen ANTHROPIC_API_KEY ingesteld.' },
         meta.ai.available ? 'AI actief' : 'AI in voorbeeldmodus'),
-      meta.demo ? demoBlock() : null,
       h('div', { class: 'gebruiker' },
         h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(roleLabel(meta.user.role))),
         h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email)),
@@ -106,49 +105,6 @@ function archivedLink(clients, route) {
     icon('archief'), h('span', { class: 'naam' }, 'Gearchiveerd'), count ? h('span', { class: 'aantal' }, count) : null);
 }
 
-// ---------- Demoversie ----------
-
-function demoBlock() {
-  return h('div', { class: 'demoblok' },
-    h('div', { class: 'demolabel' }, 'Demoversie'),
-    h('div', { class: 'demoknoppen' },
-      h('button', { type: 'button', onclick: () => showWelcome() }, 'Wat kan ik proberen?'),
-      h('button', { type: 'button', onclick: resetDemo }, 'Opnieuw beginnen')));
-}
-
-async function resetDemo() {
-  const ok = await modal({
-    title: 'Demo opnieuw beginnen?',
-    body: h('p', {}, 'Alles wat je in de demo hebt gewijzigd, wordt teruggezet naar de voorbeeldgegevens.'),
-    buttons: [{ label: 'Annuleren' }, { label: 'Opnieuw beginnen', class: 'primair', value: true }],
-  });
-  if (!ok) return;
-  await api.post('/demo/opnieuw');
-  await loadMeta();
-  location.hash = '#/';
-  toast('De demo is teruggezet');
-  render();
-}
-
-function showWelcome() {
-  const tries = [
-    ['Een planning goedkeuren', 'Open Bakkerij De Vries, tabblad Input en planning. Er wacht een voorstel voor volgende maand. Pas iets aan en keur het goed. Je ziet ook wat er gebeurt als er al een post op een datum staat.'],
-    ['De kalender gebruiken', 'Naast de datums zie je feest- en actiedagen. Beweeg over een post om de tekst te kopiëren of de status te wijzigen; klik erop voor tekst, beeld, pijler en opmerkingen.'],
-    ['Klanten snel beheren', 'Dubbelklik in de zijbalk op een klantnaam om hem te wijzigen, of gebruik de drie puntjes voor meer opties.'],
-    ['Inloggen met een andere rol', 'Log uit (linksonder) en log in als Branding of Stage om te zien wat die rol wel en niet kan. Als Chefkes vink je onder Team en rechten aan wie wat mag.'],
-    ['Klanten inrichten', 'Onder Klanten inrichten staan jullie eigen klantnamen. Vink kanalen aan en vul het aantal posts per week in.'],
-  ];
-  modal({
-    title: 'Welkom in de demo van Jouw Content Studio', width: '620px',
-    body: [
-      h('p', {}, 'Dit is een volledig werkende demo met voorbeeldgegevens. Bakkerij De Vries is een verzonnen klant om mee te oefenen; de andere klanten zijn jullie eigen klantnamen, nog niet ingericht.'),
-      h('div', { class: 'welkomlijst' }, tries.map(([title, text]) => h('div', {}, h('strong', {}, title), h('p', { class: 'zacht' }, text)))),
-      h('p', { class: 'zacht' }, 'Wat werkt anders dan in de echte versie: teksten en voorstellen komen uit een vaste voorbeeldgenerator in plaats van de AI, downloaden en Excel-import werken niet, en je wijzigingen blijven alleen in deze browser.'),
-    ],
-    buttons: [{ label: 'Aan de slag', class: 'primair', value: true }],
-  });
-  try { localStorage.setItem('jcs-demo-welkom', '1'); } catch { /* geen opslag */ }
-}
 
 // ---------- Klant snel beheren vanuit de zijbalk ----------
 
@@ -296,23 +252,13 @@ window.addEventListener('jcs:uitgelogd', () => {
   render();
 });
 
-// In de demo kunnen bestanden niet worden gedownload; geef dan een duidelijke melding.
+// In de browserversie gaan downloadlinks via de downloadfunctie van de omgeving.
 document.addEventListener('click', (e) => {
   if (!meta.demo) return;
   const link = e.target.closest?.('a[download]');
-  if (!link) return;
+  if (!link || link.dataset.direct) return;
   e.preventDefault();
-  toast('Downloaden kan in de demo niet. In de echte versie wel.');
+  downloadUrl(link.getAttribute('href'), link.getAttribute('download'));
 }, true);
 
-// In de demo verschijnt na de eerste keer inloggen een korte uitleg.
-function maybeWelcome() {
-  let seen = false;
-  try { seen = localStorage.getItem('jcs-demo-welkom') === '1'; } catch { /* geen opslag */ }
-  if (meta.demo && meta.user && !seen) showWelcome();
-}
-
-loadMeta().then(async () => {
-  await render();
-  maybeWelcome();
-}).catch((err) => fill(root, h('div', { class: 'inhoud-vlak' }, h('div', { class: 'melding fout' }, `De server is niet bereikbaar: ${err.message}`))));
+loadMeta().then(() => render()).catch((err) => fill(root, h('div', { class: 'inhoud-vlak' }, h('div', { class: 'melding fout' }, `De server is niet bereikbaar: ${err.message}`))));

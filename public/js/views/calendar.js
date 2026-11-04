@@ -222,7 +222,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('div', { class: 'voorbeeld' }, mediaPreview(m), m.kind === 'video' ? h('span', { class: 'soort' }, icon('video', { size: 12 }), 'Video') : null),
         h('div', { class: 'info' }, h('div', { class: 'naam', title: m.filename }, m.filename)),
         h('div', { class: 'acties' },
-          h('a', { class: 'knop klein kaal', href: m.download_url, download: '', title: 'Downloaden' }, icon('download', { size: 15 }), 'Download'),
+          h('a', { class: 'knop klein kaal', href: m.download_url, download: m.filename, title: 'Downloaden' }, icon('download', { size: 15 }), 'Download'),
           contentEditable && mediaList.length > 1 ? [
             h('button', { class: 'knop klein kaal icoonknop', disabled: i === 0, 'aria-label': 'Naar voren', title: 'Naar voren', onclick: () => move(i, -1) }, icon('links', { size: 15 })),
             h('button', { class: 'knop klein kaal icoonknop', disabled: i === mediaList.length - 1, 'aria-label': 'Naar achteren', title: 'Naar achteren', onclick: () => move(i, 1) }, icon('rechts', { size: 15 })),
@@ -377,7 +377,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('div', { class: 'veld' },
           h('div', { class: 'tekstkop' },
             h('label', {}, 'Origineel beeld'),
-            mediaList.length > 1 ? h('button', { class: 'knop klein', type: 'button', onclick: () => mediaList.forEach((m, i) => setTimeout(() => downloadUrl(m.download_url), i * 400)) }, icon('download', { size: 15 }), 'Alles downloaden') : null,
+            mediaList.length > 1 ? h('button', { class: 'knop klein', type: 'button', onclick: async () => { for (const m of mediaList) { await downloadUrl(m.download_url, m.filename); await new Promise((r) => setTimeout(r, 400)); } } }, icon('download', { size: 15 }), 'Alles downloaden') : null,
             contentEditable ? h('button', { class: 'knop klein', type: 'button', onclick: chooseMedia }, icon('beeld', { size: 15 }), mediaList.length ? 'Beeld wijzigen' : 'Beeld kiezen') : null),
           mediaHost),
         field('Interne opmerkingen', notes),

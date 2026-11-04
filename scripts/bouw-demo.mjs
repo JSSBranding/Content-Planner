@@ -26,6 +26,14 @@ copy('server/whatsapp.js', 'js/demo/lib/whatsapp.js');
 copy('server/constants.js', 'js/demo/lib/constants.js');
 copy('src/dagen.js', 'gedeeld/dagen.js');
 
+// Excel: dezelfde export- en importcode als de server. ExcelJS komt als los script mee en wordt pas bij gebruik geladen.
+copy('node_modules/exceljs/dist/exceljs.min.js', 'js/demo/lib/exceljs.min.js');
+const excelSrc = fs.readFileSync(r('server/excel.js'), 'utf8');
+const excelImport = "import ExcelJS from 'exceljs';";
+if (!excelSrc.includes(excelImport)) throw new Error('server/excel.js: import van ExcelJS niet gevonden');
+fs.writeFileSync(path.join(out, 'js/demo/lib/excel.js'), excelSrc.replace(excelImport,
+  '// In de browser: ExcelJS staat op window zodra js/demo/lib/exceljs.min.js is geladen.\nconst ExcelJS = { get Workbook() { return globalThis.ExcelJS.Workbook; } };'));
+
 // Klantnamen uit de echte startlijst
 const names = fs.readFileSync(r('db/startklanten.txt'), 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 fs.writeFileSync(path.join(out, 'js/demo/startklanten.js'), `// Gegenereerd uit db/startklanten.txt\nexport const START_CLIENTS = ${JSON.stringify(names, null, 2)};\n`);

@@ -29,24 +29,25 @@ function form(fields, submitLabel, onSubmit) {
   return el;
 }
 
-// In de demo: de demo-accounts, één per rol. Een klik vult e-mailadres en wachtwoord in.
+// In de browserversie: één account per rol. Een klik vult e-mailadres en wachtwoord in.
+const ACCOUNT_PASSWORD = 'contentstudio';
 function demoAccounts(formEl) {
   if (!meta.demo || !meta.demoAccounts?.length) return null;
   const fillIn = (email) => {
     formEl.querySelector('input[name=email]').value = email;
-    formEl.querySelector('input[name=password]').value = 'demo-wachtwoord';
+    formEl.querySelector('input[name=password]').value = ACCOUNT_PASSWORD;
     formEl.querySelector('button[type=submit]').focus();
   };
   return h('div', { class: 'demo-accounts' },
-    h('h2', {}, 'Demo-accounts'),
-    h('p', { class: 'zacht' }, 'Wachtwoord voor alle accounts: demo-wachtwoord. Klik op een account om het in te vullen.'),
+    h('h2', {}, 'Accounts'),
+    h('p', { class: 'zacht' }, `Eén account per rol, wachtwoord ${ACCOUNT_PASSWORD}. Klik op een account om het in te vullen.`),
     h('ul', {}, meta.demoAccounts.map((a) => h('li', {},
       h('button', { type: 'button', onclick: () => fillIn(a.email) },
         h('strong', {}, roleLabel(a.role)), h('span', {}, a.email))))));
 }
 
 export function loginView(onLoggedIn) {
-  const view = shell('Inloggen', meta.demo ? 'Demoversie van Jouw Content Studio, de contentplanner van Jouw Social Studio.' : 'Jouw Content Studio, de contentplanner van Jouw Social Studio.', form([
+  const view = shell('Inloggen', 'Jouw Content Studio, de contentplanner van Jouw Social Studio.', form([
     field('E-mailadres', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'username' })),
     field('Wachtwoord', h('input', { type: 'password', name: 'password', required: true, autocomplete: 'current-password' })),
   ], 'Inloggen', async (data) => {

@@ -9,7 +9,7 @@ import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v5';
+const STORE_KEY = 'jcs-demo-v6';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 5) return saved;
+    if (saved?.version === 6) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -223,7 +223,7 @@ function newPlanProposal(client, plan, inputs) {
   const media = listMedia(client.id).filter((m) => !(m.has_recognizable_faces === 1 && m.ai_processing_allowed !== 1));
   return examplePlan({
     client, periodStart: plan.periodStart, periodEnd: plan.periodEnd, inputs, media,
-    note: 'In de demo maakt een vaste voorbeeldgenerator de verdeling. In de echte versie doet de AI een voorstel op basis van de klantcontext.',
+    note: 'Verdeling volgens vaste regels, op basis van de kanalen, de frequentie en de klantinput.',
   });
 }
 
@@ -465,7 +465,7 @@ route('POST', '/clients/:id/media', async ({ id }, form) => {
     }
     state.media.push({
       id: mediaId, client_id: id, client_input_id: inputId, kind: isVideo ? 'video' : 'foto', filename: f.name, mime_type: f.type,
-      size_bytes: f.size, description: isVideo ? 'Video blijft in de demo alleen tijdens deze sessie zichtbaar.' : '', tags: [],
+      size_bytes: f.size, description: isVideo ? 'Video is alleen tijdens deze sessie zichtbaar.' : '', tags: [],
       has_recognizable_faces: null, ai_processing_allowed: 0, uploaded_by: currentUser().id, uploaded_at: now(), src,
     });
     ids.push(mediaId);
@@ -705,7 +705,77 @@ route('POST', '/calendar/:id/write-text', ({ id }) => {
   item.updated_at = now();
   return mapItem(item);
 });
-route('POST', '/clients/:id/import', () => fail(400, 'Excel-import kun je in de demo niet proberen. In de echte versie wel.'));
+// Excel: dezelfde export- en importcode als de server, met ExcelJS in de browser (pas geladen bij gebruik).
+let excelModule = null;
+async function excel() {
+  if (!globalThis.ExcelJS) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'js/demo/lib/exceljs.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new HttpError(503, 'Excel kon niet worden geladen. Vernieuw de pagina en probeer het opnieuw.'));
+      document.head.append(s);
+    });
+  }
+  excelModule ??= await import('./lib/excel.js');
+  return excelModule;
+}
+route('GET', '/clients/:id/export.xlsx', async ({ id }, _, q) => {
+  const client = clientOr404(id);
+  const today = new Date().toISOString().slice(0, 10);
+  const from = isDate(q.get('from')) ? q.get('from') : `${today.slice(0, 7)}-01`;
+  const to = isDate(q.get('to')) ? q.get('to') : from;
+  const items = state.calendar.filter((i) => i.client_id === id && i.publish_date >= from && i.publish_date <= to)
+    .sort((a, b) => a.publish_date.localeCompare(b.publish_date) || a.channel.localeCompare(b.channel)).map(mapItem);
+  const { exportCalendar } = await excel();
+  const data = new Uint8Array(await exportCalendar({ client, items, from, to }));
+  return { file: true, filename: `Contentkalender_${client.name.replace(/[^\w-]+/g, '_')}_${from}_${to}.xlsx`, data };
+});
+route('POST', '/clients/:id/import', async ({ id }, b) => {
+  need('editContent');
+  const client = clientOr404(id);
+  const file = b instanceof FormData ? b.get('file') : null;
+  if (!file || typeof file === 'string') fail(400, 'Kies een Excel-bestand (.xlsx).');
+  const { parseCalendarWorkbook } = await excel();
+  let parsed;
+  try {
+    parsed = await parseCalendarWorkbook(await file.arrayBuffer());
+  } catch {
+    fail(400, 'Dit bestand kon niet als Excel (.xlsx) worden gelezen.');
+  }
+  const existing = new Map(state.calendar.filter((i) => i.client_id === client.id).map((i) => [cellKey(i.publish_date, i.channel), i]));
+  const seenKeys = new Set();
+  const rows = parsed.rows.filter((r) => {
+    const k = cellKey(r.date, r.channel);
+    if (seenKeys.has(k)) { parsed.errors.push(`Rij ${r.row}: dubbele combinatie van datum en kanaal, overgeslagen.`); return false; }
+    seenKeys.add(k);
+    return true;
+  }).map((r) => ({ ...r, key: cellKey(r.date, r.channel), exists: existing.has(cellKey(r.date, r.channel)) }));
+  if (b.get('confirm') !== 'true') return { rows, errors: parsed.errors };
+
+  let overwrite;
+  try { overwrite = new Set(JSON.parse(b.get('overwrite') ?? '[]')); } catch { overwrite = new Set(); }
+  let created = 0;
+  let replaced = 0;
+  let skipped = 0;
+  for (const r of rows) {
+    const status = r.status ?? initialStatus({ body: r.body, media: [] });
+    if (!r.exists) {
+      insertItem({ clientId: client.id, date: r.date, time: r.time, channel: r.channel, body: r.body, topic: r.topic, pillar: r.pillar,
+        sourceInfo: r.source, notes: r.notes, assignee: r.assignee, status });
+      created++;
+    } else if (overwrite.has(r.key)) {
+      const item = existing.get(r.key);
+      saveVersion(item, 'Vervangen via Excel-import (expliciet gekozen)');
+      Object.assign(item, { suggested_time: r.time, body: r.body, topic: r.topic, content_pillar: r.pillar || null, source_info: r.source,
+        internal_notes: r.notes, status, updated_at: now() });
+      replaced++;
+    } else {
+      skipped++;
+    }
+  }
+  return { created, replaced, skipped, errors: parsed.errors };
+});
 
 // Contentshoots
 route('GET', '/clients/:id/shoots', ({ id }) => { clientOr404(id); return state.shoots.filter((s) => s.client_id === id).sort((a, b) => b.created_at.localeCompare(a.created_at)); });
@@ -737,8 +807,8 @@ export async function handle(method, url, body) {
       if (err instanceof HttpError) return { status: err.status, body: { error: err.message, ...err.extra } };
       if (err instanceof PlanError) return { status: 409, body: { error: err.message, conflicts: err.conflicts } };
       console.error(err);
-      return { status: 500, body: { error: 'Er ging iets mis in de demo. Probeer "Demo opnieuw beginnen" als dit blijft gebeuren.' } };
+      return { status: 500, body: { error: 'Er ging iets mis. Vernieuw de pagina en probeer het opnieuw.' } };
     }
   }
-  return { status: 404, body: { error: 'Onbekende route in de demo.' } };
+  return { status: 404, body: { error: 'Onbekende route.' } };
 }

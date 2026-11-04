@@ -44,13 +44,13 @@ Zonder `ANTHROPIC_API_KEY` werkt alles ook, maar dan maakt een vaste voorbeeldge
 | `JCS_DATA_DIR` | `./data` | Map met de database (`jouw-content-studio.sqlite`) en geüploade bestanden (`uploads/`). **Maak hier back-ups van.** |
 | `JCS_SECURE_COOKIES` | `false` | Zet op `true` zodra de app via HTTPS draait. |
 
-### Demoversie
+### Browserversie (om te testen en te laten zien)
 
 ```bash
 npm run demo:bouwen
 ```
 
-Bouwt in `dist/demo` een demo die volledig in de browser draait: dezelfde interface, met een nagebootste server (`demo/server.js`) en voorbeeldgegevens (`demo/seed.js`). De goedkeuringsregels komen uit hetzelfde bestand als op de server. Wijzigingen blijven in de browser van wie test; AI-teksten zijn voorbeeldteksten en downloaden en Excel-import werken in de demo niet.
+Bouwt in `dist/demo` een versie die volledig in de browser draait: dezelfde interface, met een nagebootste server (`demo/server.js`) en voorbeeldgegevens (`demo/seed.js`). De goedkeuringsregels en de Excel-export en -import komen uit dezelfde bestanden als op de server. Inloggen kan met één account per rol (wachtwoord `contentstudio`, staat op het inlogscherm). Wijzigingen blijven in de browser van wie test. Zonder AI-koppeling maakt een vaste generator de voorstellen en teksten. Downloads gaan via de downloadfunctie van claude.ai; publiceer de pagina daarom met de capability `downloads`.
 
 ### Testen
 

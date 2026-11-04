@@ -201,12 +201,42 @@ export async function copyText(text) {
   toast('Tekst gekopieerd.');
 }
 
-export function downloadUrl(url) {
-  if (globalThis.JCS_DEMO) return toast('Downloaden kan in de demo niet. In de echte versie wel.');
-  const a = h('a', { href: url, download: '' });
+export function downloadUrl(url, filename = '') {
+  if (globalThis.JCS_DEMO) return browserDownload(url, filename);
+  const a = h('a', { href: url, download: filename });
   document.body.append(a);
   a.click();
   a.remove();
+}
+
+// Browserversie: het bestand wordt hier gemaakt of opgehaald en via de downloadfunctie van de omgeving aangeboden.
+async function browserDownload(url, filename) {
+  try {
+    let data;
+    if (url.startsWith('/api/')) {
+      const { api } = await import('./api.js');
+      const file = await api.get(url.slice(4));
+      data = file.data;
+      filename = file.filename;
+    } else {
+      data = await (await fetch(url)).blob();
+      filename ||= decodeURIComponent(url.split('/').pop().split('?')[0]);
+    }
+    const downloads = await globalThis.claude?.use?.('downloads');
+    if (downloads) {
+      await downloads.save({ filename, data });
+      return;
+    }
+    const href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+    const a = h('a', { href, download: filename, dataset: { direct: '1' } });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  } catch (err) {
+    if (err?.code === 'declined') return;
+    toast(err?.code ? 'Downloaden lukt hier niet. Probeer het in een andere browser.' : (err?.message ?? 'Downloaden is mislukt.'), 'fout');
+  }
 }
 
 // Thumbnail van een foto of video uit de mediabibliotheek.

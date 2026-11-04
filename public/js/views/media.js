@@ -101,7 +101,7 @@ export async function mediaView({ clientId, tab, rerender }) {
         m.description ? h('div', { style: { marginTop: '4px' } }, m.description) : null,
         m.tags.length || privacy ? h('div', { class: 'knoppen', style: { gap: '4px', marginTop: '6px' } }, m.tags.map((t) => h('span', { class: 'chip' }, t)), privacy) : null),
       h('div', { class: 'acties' },
-        h('a', { class: 'knop klein kaal', href: m.download_url, download: '' }, icon('download', { size: 15 }), 'Download'),
+        h('a', { class: 'knop klein kaal', href: m.download_url, download: m.filename }, icon('download', { size: 15 }), 'Download'),
         editable ? h('button', { class: 'knop klein kaal', onclick: () => editMedia(m) }, icon('bewerk', { size: 15 }), 'Gegevens') : null,
         editable ? h('button', {
           class: 'knop klein kaal icoonknop gevaar', title: 'Verwijderen', 'aria-label': `${m.filename} verwijderen`, style: { marginLeft: 'auto' },

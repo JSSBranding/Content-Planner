@@ -108,14 +108,14 @@ export function buildSeed(today) {
   counter = 0;
   const t = iso(today);
   const created = new Date(today.getTime() - 20 * 86400000).toISOString();
-  // Demo-accounts, één per rol. Wachtwoord voor allemaal: demo-wachtwoord (bewaard als hash).
-  const PASSWORD_HASH = 'c1cf012eef5880cf58f15b27bbfdefa994fcaf742bb8e5f4f0095458257fc868';
+  // Eén account per rol. Wachtwoord voor allemaal: contentstudio (bewaard als hash).
+  const PASSWORD_HASH = '1484341c1925a5943dcdb8ebfa475a8e74b7206f7187de6ce6c3cb4b23f124f7';
   const account = (id, name, email, role) => ({ id, name, email, role, created_at: created, password_hash: PASSWORD_HASH, demoAccount: true });
   const users = [
-    account('u-chef', 'Chefkes', 'chefkes@demo.nl', 'admin'),
-    account('u-lisa', 'Social media manager', 'smm@demo.nl', 'social_media_manager'),
-    account('u-vera', 'Branding', 'branding@demo.nl', 'vormgever'),
-    account('u-sam', 'Stage', 'stage@demo.nl', 'medewerker'),
+    account('u-chef', 'Chefkes', 'chefkes@jouwsocialstudio.nl', 'admin'),
+    account('u-lisa', 'Social media manager', 'socialmedia@jouwsocialstudio.nl', 'social_media_manager'),
+    account('u-vera', 'Branding', 'branding@jouwsocialstudio.nl', 'vormgever'),
+    account('u-sam', 'Stage', 'stage@jouwsocialstudio.nl', 'medewerker'),
   ];
 
   const bakkerij = {
@@ -205,7 +205,7 @@ export function buildSeed(today) {
   const plan = {
     id: 'p-volgende-maand', clientId: 'c-bakkerij', periodStart: iso(nFirst), periodEnd: iso(nLast), status: 'in_controle', generation: 1,
     reviewTextsFirst: false, textsReady: false, aiSource: 'voorbeeld',
-    aiNote: 'In de demo is dit voorstel vooraf klaargezet. In de echte versie maakt de AI het op basis van strategie, klantinput en beeld.',
+    aiNote: 'Voorstel op basis van de strategie, de klantinput en het beschikbare beeld.',
     wishes: '', approvedBy: null, approvedAt: null, approvedGeneration: null, addedToCalendarAt: null, createdAt: new Date(today.getTime() - 3600000).toISOString(),
     items: planDays.map((date, i) => {
       const [topic, pillar] = PLAN_TOPICS[i % PLAN_TOPICS.length];
@@ -227,7 +227,7 @@ export function buildSeed(today) {
   });
 
   return {
-    version: 5, currentUserId: null, seen: {}, seenItems: {}, users, permissions: normalizePermissions(CAN),
+    version: 6, currentUserId: null, seen: {}, seenItems: {}, users, permissions: normalizePermissions(CAN),
     clients: [bakkerij, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };
