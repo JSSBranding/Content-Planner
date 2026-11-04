@@ -368,3 +368,41 @@ test('gezondheidscontrole voor de hosting', async () => {
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true });
 });
+
+test('contentshoots: voorgestelde datum, zelf toevoegen, datum aanpassen en afvinken', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Shoot Test', channels: ['instagram'], content_pillars: ['Team', 'Product'] })).body;
+  assert.equal((await admin('POST', `/api/clients/${c.id}/shoots`)).status, 201);
+  let shoots = (await admin('GET', `/api/clients/${c.id}/shoots`)).body;
+  assert.equal(shoots.length, 2);
+  const today = new Date().toISOString().slice(0, 10);
+  for (const s of shoots) {
+    assert.match(s.planned_date, /^\d{4}-\d{2}-\d{2}$/, 'elke voorgestelde shoot heeft een datum');
+    assert.ok(s.planned_date > today, 'datum ligt in de toekomst');
+    assert.ok(![0, 6].includes(new Date(`${s.planned_date}T12:00:00Z`).getUTCDay()), 'op een werkdag');
+  }
+  assert.equal((await admin('POST', `/api/clients/${c.id}/shoots/eigen`, { title: 'Kerstshoot', planned_date: '2026-12-10' })).status, 201);
+  assert.equal((await admin('POST', `/api/clients/${c.id}/shoots/eigen`, { title: '' })).status, 400);
+  shoots = (await admin('GET', `/api/clients/${c.id}/shoots`)).body;
+  const kerst = shoots.find((s) => s.title === 'Kerstshoot');
+  assert.equal((await admin('PATCH', `/api/shoots/${kerst.id}`, { planned_date: 'morgen' })).status, 400);
+  const updated = (await admin('PATCH', `/api/shoots/${kerst.id}`, { planned_date: '2026-12-11', done: true })).body;
+  assert.equal(updated.planned_date, '2026-12-11');
+  assert.equal(updated.done, true);
+  shoots = (await admin('GET', `/api/clients/${c.id}/shoots`)).body;
+  assert.equal(shoots.at(-1).id, kerst.id, 'gedane shoots staan onderaan');
+  assert.equal((await designer('PATCH', `/api/shoots/${kerst.id}`, { done: false })).status, 403);
+});
+
+test('teksten kunnen al vóór goedkeuren worden geschreven; goedkeuren houdt eigen teksten', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Tekst Test', channels: ['instagram', 'facebook'], posts_per_week: 2 })).body;
+  const plan = (await admin('POST', `/api/clients/${c.id}/plans`, { periodStart: '2027-02-01', periodEnd: '2027-02-07' })).body;
+  const written = await admin('POST', `/api/plans/${plan.id}/write-texts`, {});
+  assert.equal(written.status, 200);
+  assert.ok(written.body.items.every((it) => it.channels.every((ch) => it.texts[ch])), 'alle teksten geschreven');
+  const items = written.body.items.map((it, i) => (i === 0 ? { ...it, texts: { ...it.texts, instagram: 'Mijn eigen tekst' } } : it));
+  assert.equal((await admin('PUT', `/api/plans/${plan.id}/items`, { items })).status, 200);
+  const approved = await admin('POST', `/api/plans/${plan.id}/approve`, { reviewTextsFirst: false, resolutions: {} });
+  assert.equal(approved.status, 200);
+  const cal = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-02-01&to=2027-02-07`)).body.items;
+  assert.ok(cal.some((i) => i.body === 'Mijn eigen tekst'), 'eigen tekst staat in de kalender');
+});

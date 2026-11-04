@@ -729,7 +729,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
   // Conceptteksten (opnieuw) laten schrijven voor een goedgekeurde planning.
   api.post('/plans/:id/write-texts', requirePermission('managePlans'), async (req, res) => {
     const plan = planOr404(req.params.id);
-    if (plan.status !== PLAN_STATUS.GOEDGEKEURD) fail(409, 'Teksten worden geschreven nadat de planning is goedgekeurd.');
+    if (plan.status === PLAN_STATUS.TOEGEVOEGD) fail(409, 'Deze planning staat al in de kalender.');
     const texts = await generateTextsFor(clientOr404(plan.clientId), plan.items);
     const overwrite = Boolean(req.body?.overwrite);
     const items = plan.items.map((it, i) => ({ ...it, texts: overwrite ? { ...it.texts, ...texts[i] } : { ...texts[i], ...it.texts } }));
@@ -966,7 +966,32 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
 
   api.get('/clients/:id/shoots', (req, res) => {
     clientOr404(req.params.id);
-    res.json(db.prepare('SELECT * FROM shoot_suggestions WHERE client_id = ? ORDER BY created_at DESC').all(req.params.id));
+    res.json(db.prepare(`SELECT * FROM shoot_suggestions WHERE client_id = ?
+      ORDER BY done, planned_date IS NULL, planned_date, created_at DESC`).all(req.params.id).map((s) => ({ ...s, done: Boolean(s.done) })));
+  });
+
+  const shootOr404 = (id) => db.prepare('SELECT * FROM shoot_suggestions WHERE id = ?').get(id) ?? fail(404, 'Contentshoot niet gevonden.');
+  const optDate = (s) => (s ? (isDate(s) ? s : fail(400, `Ongeldige datum: ${s}`)) : null);
+
+  // Zelf een shoot inplannen, naast de voorstellen van de AI.
+  api.post('/clients/:id/shoots/eigen', requirePermission('managePlans'), (req, res) => {
+    const client = clientOr404(req.params.id);
+    const title = str(req.body?.title, 200).trim() || fail(400, 'Geef de shoot een titel.');
+    const id = newId();
+    db.prepare("INSERT INTO shoot_suggestions (id, client_id, title, body, ai_source, planned_date) VALUES (?, ?, ?, ?, 'handmatig', ?)")
+      .run(id, client.id, title, str(req.body?.body, 5000), optDate(req.body?.planned_date));
+    res.status(201).json({ id });
+  });
+
+  api.patch('/shoots/:id', requirePermission('managePlans'), (req, res) => {
+    const shoot = shootOr404(req.params.id);
+    const b = req.body ?? {};
+    db.prepare('UPDATE shoot_suggestions SET title = ?, body = ?, planned_date = ?, done = ? WHERE id = ?').run(
+      b.title == null ? shoot.title : (str(b.title, 200).trim() || fail(400, 'Geef de shoot een titel.')),
+      b.body == null ? shoot.body : str(b.body, 5000),
+      b.planned_date === undefined ? shoot.planned_date : optDate(b.planned_date),
+      b.done == null ? shoot.done : (b.done ? 1 : 0), shoot.id);
+    res.json({ ...shootOr404(shoot.id), done: Boolean(shootOr404(shoot.id).done) });
   });
 
   api.post('/clients/:id/shoots', requirePermission('managePlans'), async (req, res) => {
@@ -974,8 +999,9 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     const recentTopics = db.prepare("SELECT DISTINCT topic FROM calendar_items WHERE client_id = ? AND topic <> '' ORDER BY publish_date DESC LIMIT 30")
       .all(client.id).map((r) => r.topic);
     const suggestions = await suggestShoots({ client, media: listMedia(db, client.id), recentTopics });
-    const insert = db.prepare('INSERT INTO shoot_suggestions (id, client_id, title, body, ai_source) VALUES (?, ?, ?, ?, ?)');
-    transaction(db, () => suggestions.forEach((s) => insert.run(newId(), client.id, str(s.title, 200), str(s.body, 5000), aiAvailable() ? 'ai' : 'voorbeeld')));
+    const insert = db.prepare('INSERT INTO shoot_suggestions (id, client_id, title, body, ai_source, planned_date) VALUES (?, ?, ?, ?, ?, ?)');
+    transaction(db, () => suggestions.forEach((s) => insert.run(newId(), client.id, str(s.title, 200), str(s.body, 5000),
+      aiAvailable() ? 'ai' : 'voorbeeld', isDate(s.date) ? s.date : null)));
     res.status(201).json({ count: suggestions.length });
   });
 

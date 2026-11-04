@@ -200,7 +200,15 @@ export async function calendarView({ clientId, tab, query, rerender }) {
 
     // Nieuwe post: kanalen aanvinken, één tekst voor alle kanalen of per kanaal een eigen tekst.
     const startChannels = start.channels ?? (start.channel ? [start.channel] : client.channels);
-    const channelBoxes = meta.channels.map((c) => c.key).map((ch) => h('label', {}, h('input', { type: 'checkbox', value: ch, checked: startChannels.includes(ch), onchange: () => { markDirty(); drawPerChannel(); } }), channelLabel(ch)));
+    // Standaard alleen de kanalen van deze klant; andere kanalen kun je er bewust bij zetten.
+    const allChannels = meta.channels.map((c) => c.key);
+    const ownChannels = client.channels.length ? allChannels.filter((ch) => client.channels.includes(ch) || startChannels.includes(ch)) : allChannels;
+    const channelBoxes = allChannels.map((ch) => h('label', { hidden: !ownChannels.includes(ch) },
+      h('input', { type: 'checkbox', value: ch, checked: startChannels.includes(ch), onchange: () => { markDirty(); drawPerChannel(); } }), channelLabel(ch)));
+    const otherChannelsButton = ownChannels.length < allChannels.length ? h('button', {
+      type: 'button', class: 'knop klein kaal', title: 'Kanalen die niet bij deze klant zijn ingesteld',
+      onclick: (e) => { channelBoxes.forEach((l) => { l.hidden = false; }); e.currentTarget.remove(); },
+    }, icon('plus', { size: 14 }), 'Ander kanaal') : null;
     const chosenChannels = () => channelBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.value);
     const perChannelToggle = h('input', { type: 'checkbox', onchange: () => drawPerChannel(true) });
     const perChannelTexts = {};
@@ -365,7 +373,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('button', { class: 'knop kaal icoonknop', 'aria-label': 'Sluiten', title: 'Sluiten (Esc)', onclick: () => tryClose() }, icon('sluit'))),
       h('div', { class: 'paneel-inhoud' },
         h('div', { class: 'rij' }, field('Status', status), field('Contentpijler (optioneel)', pillar, pillarOptions.length ? null : 'Pijlers stel je in op het klantprofiel.'), field('Verantwoordelijke', assignee), assigneeList),
-        isNew ? h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes),
+        isNew ? h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes, otherChannelsButton),
           h('label', { class: 'vinkje klein-vinkje', style: { marginTop: '10px' } }, perChannelToggle, 'Andere tekst per kanaal')) : null,
         perChannelHost,
         h('div', { class: 'veld' },

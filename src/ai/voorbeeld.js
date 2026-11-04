@@ -53,10 +53,26 @@ export function exampleTexts(client, post) {
   return texts;
 }
 
-export function exampleShoots(client) {
+/**
+ * Voorgestelde shootdatums: de eerste over ongeveer een week, daarna elke week één, altijd op een werkdag.
+ * Zo is er tijd om af te spreken met de klant en is het beeld klaar voordat het nodig is.
+ */
+export function shootDates(count, today = new Date()) {
+  const base = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + 7 + i * 7);
+    while ([0, 6].includes(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+export function exampleShoots(client, today = new Date()) {
   const pillars = client.content_pillars.length ? client.content_pillars : ['Algemeen'];
-  return pillars.slice(0, 5).map((p) => ({
+  const dates = shootDates(Math.min(pillars.length, 5), today);
+  return pillars.slice(0, 5).map((p, i) => ({
     title: `Beeld voor pijler ${p}`,
     body: `Maak 5 tot 10 foto's en 2 korte verticale video's die ${p.toLowerCase()} laten zien. Liefst op locatie bij de klant, met daglicht.`,
+    date: dates[i],
   }));
 }

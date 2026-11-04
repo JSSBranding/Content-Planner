@@ -3,7 +3,7 @@
 // zodat de workflow altijd te testen is. AI-uitkomsten zijn altijd voorstellen.
 import Anthropic from '@anthropic-ai/sdk';
 import { CHANNELS } from './constants.js';
-import { datesBetween, examplePlan, exampleTexts, exampleShoots } from '../src/ai/voorbeeld.js';
+import { datesBetween, examplePlan, exampleTexts, exampleShoots, shootDates } from '../src/ai/voorbeeld.js';
 import { daysBetween } from '../src/dagen.js';
 
 export { datesBetween, examplePlan };
@@ -281,15 +281,17 @@ const SHOOT_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'body'],
-        properties: { title: { type: 'string' }, body: { type: 'string' } },
+        required: ['title', 'body', 'date'],
+        properties: { title: { type: 'string' }, body: { type: 'string' }, date: { type: 'string', description: 'Voorgestelde shootdatum, JJJJ-MM-DD' } },
       },
     },
   },
 };
 
-export async function suggestShoots({ client, media, recentTopics }) {
-  if (!aiAvailable()) return exampleShoots(client);
+export async function suggestShoots({ client, media, recentTopics, today = new Date() }) {
+  if (!aiAvailable()) return exampleShoots(client, today);
+  const [earliest] = shootDates(1, today);
+  const latest = shootDates(8, today).at(-1);
   const counts = media.reduce((acc, m) => ({ ...acc, [m.kind]: (acc[m.kind] ?? 0) + 1 }), {});
   const prompt = [
     clientContext(client),
@@ -297,7 +299,11 @@ export async function suggestShoots({ client, media, recentTopics }) {
     `Tags in de bibliotheek: ${[...new Set(media.flatMap((m) => m.tags))].join(', ') || '(geen)'}`,
     `Recente onderwerpen: ${recentTopics.join('; ') || '(geen)'}`,
     `\nStel 3–6 concrete contentshoots voor die ontbrekend beeld aanvullen. Per voorstel: wat, waar, welke shots (foto/video, staand/liggend), voor welke pijler en kanalen.`,
+    `Geef elke shoot een voorgestelde datum op een werkdag tussen ${earliest} en ${latest}. Plan shoots voor beeld dat het eerst nodig is het vroegst, houd rekening met feestdagen en seizoen, en spreid ze over de weken.`,
   ].join('\n');
   const result = await callJson({ system: SYSTEM, prompt, schema: SHOOT_SCHEMA, effort: 'low' });
-  return (result.suggestions ?? []).filter((s) => s.title?.trim() && s.body?.trim());
+  const suggestions = (result.suggestions ?? []).filter((s) => s.title?.trim() && s.body?.trim());
+  // Een ongeldige of te vroege/late datum vervangen door een gespreide standaarddatum.
+  const fallback = shootDates(suggestions.length, today);
+  return suggestions.map((s, i) => ({ ...s, date: /^\d{4}-\d{2}-\d{2}$/.test(s.date ?? '') && s.date >= earliest && s.date <= latest ? s.date : fallback[i] }));
 }

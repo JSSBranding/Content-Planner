@@ -576,7 +576,7 @@ route('POST', '/plans/:id/approve', ({ id }, b) => {
 route('POST', '/plans/:id/write-texts', ({ id }, b) => {
   need('managePlans');
   const plan = planOr404(id);
-  if (plan.status !== PLAN_STATUS.GOEDGEKEURD) fail(409, 'Teksten worden geschreven nadat de planning is goedgekeurd.');
+  if (plan.status === PLAN_STATUS.TOEGEVOEGD) fail(409, 'Deze planning staat al in de kalender.');
   const texts = textsFor(clientOr404(plan.clientId), plan.items);
   const items = plan.items.map((it, i) => ({ ...it, texts: b?.overwrite ? { ...it.texts, ...texts[i] } : { ...texts[i], ...it.texts } }));
   return planOut(storePlan({ ...plan, items, textsReady: true }));
@@ -788,13 +788,36 @@ route('POST', '/clients/:id/import', async ({ id }, b) => {
 });
 
 // Contentshoots
-route('GET', '/clients/:id/shoots', ({ id }) => { clientOr404(id); return state.shoots.filter((s) => s.client_id === id).sort((a, b) => b.created_at.localeCompare(a.created_at)); });
+route('GET', '/clients/:id/shoots', ({ id }) => {
+  clientOr404(id);
+  return state.shoots.filter((s) => s.client_id === id).map((s) => ({ planned_date: null, ...s, done: Boolean(s.done) }))
+    .sort((a, b) => Number(a.done) - Number(b.done) || Number(!a.planned_date) - Number(!b.planned_date)
+      || (a.planned_date ?? '').localeCompare(b.planned_date ?? '') || b.created_at.localeCompare(a.created_at));
+});
 route('POST', '/clients/:id/shoots', ({ id }) => {
   need('managePlans');
   const client = clientOr404(id);
   const suggestions = exampleShoots(client);
-  for (const s of suggestions) state.shoots.push({ id: newId(), client_id: id, title: s.title, body: s.body, ai_source: 'voorbeeld', created_at: now() });
+  for (const s of suggestions) state.shoots.push({ id: newId(), client_id: id, title: s.title, body: s.body, ai_source: 'voorbeeld', planned_date: s.date ?? null, done: false, created_at: now() });
   return { count: suggestions.length };
+});
+const shootDate = (s) => (s ? (isDate(s) ? s : fail(400, `Ongeldige datum: ${s}`)) : null);
+route('POST', '/clients/:id/shoots/eigen', ({ id }, b) => {
+  need('managePlans');
+  clientOr404(id);
+  const title = str(b?.title, 200).trim() || fail(400, 'Geef de shoot een titel.');
+  const shoot = { id: newId(), client_id: id, title, body: str(b?.body, 5000), ai_source: 'handmatig', planned_date: shootDate(b?.planned_date), done: false, created_at: now() };
+  state.shoots.push(shoot);
+  return { id: shoot.id };
+});
+route('PATCH', '/shoots/:id', ({ id }, b) => {
+  need('managePlans');
+  const shoot = state.shoots.find((s) => s.id === id) ?? fail(404, 'Contentshoot niet gevonden.');
+  if (b?.title != null) shoot.title = str(b.title, 200).trim() || fail(400, 'Geef de shoot een titel.');
+  if (b?.body != null) shoot.body = str(b.body, 5000);
+  if (b?.planned_date !== undefined) shoot.planned_date = shootDate(b.planned_date);
+  if (b?.done != null) shoot.done = Boolean(b.done);
+  return { ...shoot };
 });
 route('DELETE', '/shoots/:id', ({ id }) => { need('managePlans'); state.shoots = state.shoots.filter((s) => s.id !== id); return { ok: true }; });
 

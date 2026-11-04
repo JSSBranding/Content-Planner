@@ -189,5 +189,7 @@ CREATE TABLE IF NOT EXISTS shoot_suggestions (
   title       TEXT NOT NULL,
   body        TEXT NOT NULL,
   ai_source   TEXT NOT NULL DEFAULT 'ai',
+  planned_date TEXT,
+  done        INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

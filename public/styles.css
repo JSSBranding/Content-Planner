@@ -576,3 +576,78 @@ table.rechten tr.vast td { background: #fafbfb; }
 .menuknop:focus-visible { outline: 2px solid var(--turkoois); }
 input[aria-invalid="true"] { border-color: var(--fout, #d33); }
 tr.uitgezet td { opacity: .6; }
+
+/* ---------- Contentshoots: maandkalender ---------- */
+.shootkalender { margin-bottom: 26px; }
+.maandkop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.maandraster { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--lijn); border-radius: var(--r); overflow: hidden; }
+.maandraster .weekdag { font-size: 12px; color: var(--tekst-zacht); font-weight: 500; padding: 8px 10px; background: #fafbfb; border-bottom: 1px solid var(--lijn); text-transform: capitalize; }
+.dagvak { min-height: 96px; padding: 6px 6px 8px; border-right: 1px solid var(--lijn); border-bottom: 1px solid var(--lijn); display: flex; flex-direction: column; gap: 4px; position: relative; min-width: 0; }
+.dagvak:nth-child(7n + 14) { border-right: 0; }
+.maandraster > .dagvak:nth-last-child(-n + 7) { border-bottom: 0; }
+.dagvak.weekend { background: #fbfbfb; }
+.dagvak.andere-maand .dagnr { color: var(--lijn-sterk); }
+.dagvak .dagnr { font-size: 12.5px; font-weight: 600; padding: 2px 4px; }
+.dagvak.vandaag .dagnr { background: var(--turkoois); color: var(--inkt); border-radius: 10px; width: max-content; padding: 2px 8px; }
+.shootchip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 5px; width: 100%; font-size: 12px; font-weight: 500; line-height: 1.25; padding: 5px 7px; border-radius: 6px; background: var(--inkt); color: #fff; cursor: pointer; }
+.shootchip span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.shootchip .icoon { flex: none; }
+.shootchip:hover { background: #000; }
+.shootchip:focus-visible { outline: 2px solid var(--turkoois); outline-offset: 1px; }
+.shootchip.gedaan { background: var(--vlak); color: var(--tekst-zacht); text-decoration: line-through; }
+.dagplus { all: unset; position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--tekst-zacht); cursor: pointer; opacity: 0; }
+.dagvak:hover .dagplus, .dagplus:focus-visible { opacity: 1; }
+.dagplus:hover { background: var(--vlak); color: var(--tekst); }
+@media (hover: none) { .dagplus { opacity: .6; } }
+.sectiekop { font-size: 17px; margin: 0 0 12px; }
+.shootkaart.gedaan { opacity: .7; }
+@media (max-width: 700px) {
+  .dagvak { min-height: 64px; padding: 4px 3px; }
+  .shootchip { padding: 3px 4px; font-size: 10.5px; }
+  .shootchip .icoon { display: none; }
+}
+
+/* ---------- Conceptplanning: verdeling en posts ---------- */
+.verdelingkop { margin-bottom: 18px; }
+.verdelingkop h2 { font-size: 17px; margin-bottom: 4px; }
+.verdeling .hulp { font-size: 12.5px; color: var(--tekst-zacht); margin: -4px 0 12px; }
+.weekregel { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--lijn); font-size: 13px; }
+.weekregel:first-of-type { border-top: 0; }
+.weekregel .weeknaam { display: flex; flex-direction: column; min-width: 0; }
+.weekregel .weeknaam .zacht { font-size: 12px; }
+.weekregel .getal { font-variant-numeric: tabular-nums; color: var(--tekst-zacht); white-space: nowrap; }
+.oordeel { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.oordeel.ok { background: var(--ok-vlak); color: var(--ok); }
+.oordeel.let-op { background: var(--let-op-vlak); color: var(--let-op); }
+.balk { grid-template-columns: minmax(70px, 120px) 1fr 26px; }
+.balk .getal { text-align: right; font-variant-numeric: tabular-nums; }
+
+.lijstkop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.lijstkop h2 { font-size: 17px; margin: 0; }
+.weekgroep { margin-bottom: 18px; }
+.weekgroep > h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.weekgroep > h3 .zacht { font-weight: 400; }
+.postlijst { display: grid; gap: 8px; }
+.postkaart {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto 20px; gap: 16px; align-items: start;
+  background: var(--papier); border: 1px solid var(--lijn); border-radius: var(--r-groot); padding: 14px 16px;
+  transition: border-color .12s, box-shadow .12s;
+}
+.postkaart:hover { border-color: var(--inkt); }
+.postkaart:focus-visible { outline: 2px solid var(--inkt); outline-offset: 2px; }
+.postkaart.conflict { background: var(--let-op-vlak); }
+.postkaart.dubbel { background: var(--fout-vlak); border-color: var(--fout); }
+.postkaart .wanneer .dag { font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.postkaart .wanneer .rest { font-size: 12.5px; color: var(--tekst-zacht); margin-top: 5px; text-transform: capitalize; }
+.postkaart .onderwerp { font-weight: 600; font-size: 14.5px; }
+.postkaart .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.postkaart .chip.kanaal { background: var(--inkt); color: #fff; }
+.postkaart .tekststatus { font-size: 12.5px; margin-top: 8px; }
+.postkaart .pijl { color: var(--tekst-zacht); align-self: center; }
+.beeldjes.groot .duim { width: 64px; height: 64px; }
+@media (max-width: 700px) {
+  .postkaart { grid-template-columns: 48px minmax(0, 1fr); }
+  .postkaart .beeldjes { grid-column: 2; }
+  .postkaart .pijl { display: none; }
+}
