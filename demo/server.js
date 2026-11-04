@@ -491,11 +491,15 @@ route('PATCH', '/media/:id', ({ id }, b) => {
   if ('ai_processing_allowed' in (b ?? {})) m.ai_processing_allowed = b.ai_processing_allowed ? 1 : 0;
   return { ok: true };
 });
-route('DELETE', '/media/:id', ({ id }) => {
+route('DELETE', '/media/:id', ({ id }, b) => {
   need('manageMedia');
   const m = mediaOr404(id);
-  const used = state.calendar.filter((i) => i.media.includes(id)).length;
-  if (used) fail(409, `Dit bestand is gekoppeld aan ${used} kalenderitem(s). Ontkoppel het eerst.`);
+  const linked = state.calendar.filter((i) => i.media.includes(id));
+  if (linked.length && b?.force !== true) fail(409, `Dit beeld zit in ${linked.length} post${linked.length === 1 ? '' : 's'} in de kalender.`, { linked: linked.length });
+  for (const item of linked) {
+    saveVersion(item, `Beeld ${m.filename} verwijderd uit de bibliotheek`);
+    item.media = item.media.filter((x) => x !== id);
+  }
   state.media = state.media.filter((x) => x.id !== m.id);
   return { ok: true };
 });

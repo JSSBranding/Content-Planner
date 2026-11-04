@@ -69,14 +69,14 @@ export async function plansView({ clientId, tab, rerender }) {
   field('Wensen voor deze periode', wishes),
   h('button', { class: 'knop primair', type: 'submit', style: { width: '100%' } }, icon('sparkle', { size: 16 }), 'Voorstel laten maken')) : null;
 
-  const list = plans.length ? h('table', { class: 'lijst' },
+  const list = plans.length ? h('div', { class: 'tabel-wrap' }, h('table', { class: 'lijst' },
     h('thead', {}, h('tr', {}, h('th', {}, 'Periode'), h('th', {}, 'Status'), h('th', {}, 'Onderwerpen'), h('th', {}, 'Goedgekeurd door'))),
     h('tbody', {}, plans.map((p) => h('tr', { class: 'klikbaar', onclick: () => { location.hash = `#/klant/${clientId}/planning/${p.id}`; } },
       h('td', {}, h('a', { href: `#/klant/${clientId}/planning/${p.id}`, style: { fontWeight: 600, textDecoration: 'none' } }, period(p.period_start, p.period_end)),
         h('div', { class: 'zacht' }, `Gemaakt ${fmtDateTime(p.created_at)}${p.ai_source === 'voorbeeld' ? ' (voorbeeldmodus)' : ''}`)),
       h('td', {}, planChip(p.status)),
       h('td', {}, p.item_count),
-      h('td', { class: 'zacht' }, p.approved_by_name ? `${p.approved_by_name}, ${fmtDateTime(p.approved_at)}` : 'Nog niet'))))) : h('div', { class: 'paneelblok' }, emptyState('Nog geen planningen. Laat rechts een voorstel maken op basis van de klantinput.'));
+      h('td', { class: 'zacht' }, p.approved_by_name ? `${p.approved_by_name}, ${fmtDateTime(p.approved_at)}` : 'Nog niet')))))) : h('div', { class: 'paneelblok' }, emptyState('Nog geen planningen. Laat rechts een voorstel maken op basis van de klantinput.'));
 
   return page(head(), h('div', { class: form ? 'zij-kolom' : '' },
     h('div', {},

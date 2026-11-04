@@ -107,7 +107,18 @@ export async function mediaView({ clientId, tab, rerender }) {
           class: 'knop klein kaal icoonknop gevaar', title: 'Verwijderen', 'aria-label': `${m.filename} verwijderen`, style: { marginLeft: 'auto' },
           onclick: async () => {
             if (!(await confirmDialog('Bestand verwijderen?', `${m.filename} wordt definitief verwijderd.`, { confirmLabel: 'Verwijderen', danger: true }))) return;
-            try { await api.del(`/media/${m.id}`); toast('Bestand verwijderd'); rerender(); } catch (err) { showError(err); }
+            try {
+              await api.del(`/media/${m.id}`);
+            } catch (err) {
+              if (!err.body?.linked) return showError(err);
+              // Het beeld zit in posts: na bevestiging toch verwijderen; de posts blijven staan zonder dit beeld.
+              const n = err.body.linked;
+              if (!(await confirmDialog('Beeld zit in posts', `${m.filename} zit in ${n} post${n === 1 ? '' : 's'} in de kalender. Verwijder je het, dan blijven die posts staan, maar zonder dit beeld. In de geschiedenis van elke post is de vorige versie terug te vinden.`,
+                { confirmLabel: 'Toch verwijderen', danger: true }))) return;
+              try { await api.del(`/media/${m.id}`, { force: true }); } catch (err2) { return showError(err2); }
+            }
+            toast('Bestand verwijderd');
+            rerender();
           },
         }, icon('prullenbak', { size: 15 })) : null));
   }

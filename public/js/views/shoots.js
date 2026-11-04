@@ -30,9 +30,11 @@ export async function shootsView({ clientId, tab, query, rerender }) {
     const date = h('input', { type: 'date', value: shoot?.planned_date ?? presetDate ?? '' });
     const body = h('textarea', { rows: 6, value: shoot?.body ?? '', placeholder: 'Wat, waar, welke shots (foto/video, staand/liggend), voor welke pijler en kanalen' });
     const done = h('input', { type: 'checkbox', checked: Boolean(shoot?.done) });
+    const error = h('div', { class: 'melding fout', hidden: true, role: 'alert' }, 'Geef de shoot een titel.');
     await modal({
       title: shoot ? 'Contentshoot wijzigen' : 'Contentshoot toevoegen', width: '600px',
       body: [
+        error,
         field('Titel', title),
         field('Datum van de shoot', date, shoot?.ai_source && shoot.ai_source !== 'handmatig' ? 'Voorgesteld door de AI. Pas de datum aan als die niet uitkomt.' : 'Leeg laten als de datum nog niet vaststaat.'),
         field('Wat moet er gefilmd en gefotografeerd worden?', body),
@@ -44,7 +46,7 @@ export async function shootsView({ clientId, tab, query, rerender }) {
         {
           label: shoot ? 'Opslaan' : 'Toevoegen', class: 'primair',
           action: async () => {
-            if (!title.value.trim()) { title.focus(); return undefined; }
+            if (!title.value.trim()) { error.hidden = false; title.focus(); return undefined; }
             const data = { title: title.value, body: body.value, planned_date: date.value || null };
             try {
               if (shoot) await api.patch(`/shoots/${shoot.id}`, { ...data, done: done.checked });

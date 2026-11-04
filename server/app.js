@@ -606,9 +606,16 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
 
   api.delete('/media/:id', requirePermission('manageMedia'), (req, res) => {
     const m = mediaOr404(req.params.id);
-    const used = db.prepare('SELECT COUNT(*) AS n FROM calendar_item_media WHERE media_asset_id = ?').get(m.id).n;
-    if (used) fail(409, `Dit bestand is gekoppeld aan ${used} kalenderitem(s). Ontkoppel het eerst.`);
-    db.prepare('DELETE FROM media_assets WHERE id = ?').run(m.id);
+    const linked = db.prepare('SELECT calendar_item_id AS id FROM calendar_item_media WHERE media_asset_id = ?').all(m.id);
+    // Zit het beeld in posts, dan pas verwijderen na expliciete bevestiging; de posts blijven staan (met een versie in de geschiedenis).
+    if (linked.length && req.body?.force !== true) {
+      fail(409, `Dit beeld zit in ${linked.length} post${linked.length === 1 ? '' : 's'} in de kalender.`, { linked: linked.length });
+    }
+    transaction(db, () => {
+      for (const { id } of linked) saveVersion(getCalendarItem(db, id), req.user.id, `Beeld ${m.filename} verwijderd uit de bibliotheek`);
+      db.prepare('DELETE FROM calendar_item_media WHERE media_asset_id = ?').run(m.id);
+      db.prepare('DELETE FROM media_assets WHERE id = ?').run(m.id);
+    });
     fs.rm(mediaPath(m), { force: true }, () => {});
     res.json({ ok: true });
   });

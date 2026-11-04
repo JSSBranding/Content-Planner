@@ -406,3 +406,19 @@ test('teksten kunnen al vóór goedkeuren worden geschreven; goedkeuren houdt ei
   const cal = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-02-01&to=2027-02-07`)).body.items;
   assert.ok(cal.some((i) => i.body === 'Mijn eigen tekst'), 'eigen tekst staat in de kalender');
 });
+
+test('beeld dat in posts zit: eerst melding, na bevestiging verwijderd en posts blijven staan', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Beeld Test', channels: ['instagram'] })).body;
+  const upload = new FormData();
+  upload.append('files', new Blob([Buffer.from([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }), 'foto.jpg');
+  const [mediaId] = (await admin('POST', `/api/clients/${c.id}/media`, null, { form: upload })).body.ids;
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-03-01', channel: 'instagram', body: 'Met foto', media: [mediaId] });
+  const first = await admin('DELETE', `/api/media/${mediaId}`);
+  assert.equal(first.status, 409);
+  assert.equal(first.body.linked, 1);
+  assert.equal((await admin('DELETE', `/api/media/${mediaId}`, { force: true })).status, 200);
+  const item = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-03-01&to=2027-03-31`)).body.items[0];
+  assert.equal(item.body, 'Met foto');
+  assert.equal(item.media.length, 0);
+  assert.ok((await admin('GET', `/api/calendar/${item.id}`)).body.versions.length >= 1, 'vorige versie bewaard');
+});

@@ -178,7 +178,7 @@ label { display: block; font-weight: 500; font-size: 13px; margin-bottom: 6px; }
 .sectie { margin-bottom: 24px; }
 .twee-kolommen { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
 .zij-kolom { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
-@media (max-width: 1100px) { .twee-kolommen, .zij-kolom { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .twee-kolommen, .zij-kolom { grid-template-columns: minmax(0, 1fr); } }
 
 .melding { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: var(--r); margin-bottom: 16px; font-size: 13.5px; }
 .melding .icoon { margin-top: 1px; }
@@ -528,7 +528,7 @@ table.rechten input[type=checkbox]:disabled { cursor: not-allowed; }
 .teksten-per-kanaal { display: grid; gap: 4px; }
 .teksten-per-kanaal textarea { min-height: 120px; }
 .twee-kolommen.profiel { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-@media (max-width: 1100px) { .twee-kolommen.profiel { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .twee-kolommen.profiel { grid-template-columns: minmax(0, 1fr); } }
 
 table.rechten tr.vast td { background: #fafbfb; }
 
