@@ -663,3 +663,70 @@ img.avatarfoto { object-fit: cover; padding: 0; background: #fff; }
 .zijbalk .gebruiker button.mijnaccount { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; cursor: pointer; border-radius: var(--r); padding: 4px; margin: -4px; }
 .zijbalk .gebruiker button.mijnaccount:hover { background: rgb(255 255 255 / 7%); }
 .zijbalk .gebruiker button.mijnaccount:focus-visible { outline: 2px solid var(--turkoois); }
+
+/* ---------- Klantprofiel: belangrijke dagen en terugkerende posts ---------- */
+.dagenlijst, .regellijst, .voorstellijst { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.dagenlijst li, .regellijst li { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--lijn); }
+.dagenlijst li:first-child, .regellijst li:first-child { border-top: 0; }
+.dagenlijst .datum { width: 190px; flex: none; color: var(--tekst-zacht); font-size: 13px; }
+.dagenlijst .naam { flex: 1; font-weight: 500; }
+.dagenlijst .acties, .regellijst .acties { display: flex; gap: 4px; margin-left: auto; }
+.regellijst .wat { flex: 1; min-width: 0; }
+.regellijst .wat .zacht { font-size: 12.5px; margin-top: 2px; }
+.regellijst li.uit .wat { opacity: .55; }
+.voorstellijst li { padding: 8px 0; border-top: 1px solid var(--lijn); }
+.voorstellijst li:first-child { border-top: 0; }
+.voorstellijst .vinkje { align-items: flex-start; }
+.voorstellijst .vinkje > span { display: grid; gap: 2px; }
+.schakelaar { position: relative; display: inline-flex; width: 38px; height: 22px; flex: none; margin: 0; cursor: pointer; }
+.schakelaar input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.schakelaar .knopje { width: 100%; height: 100%; border-radius: 11px; background: var(--lijn-sterk); transition: background .15s; position: relative; }
+.schakelaar .knopje::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.schakelaar input:checked + .knopje { background: var(--inkt); }
+.schakelaar input:checked + .knopje::after { transform: translateX(16px); }
+.schakelaar input:focus-visible + .knopje { outline: 2px solid var(--turkoois); outline-offset: 2px; }
+@media (max-width: 700px) { .dagenlijst li { flex-wrap: wrap; } .dagenlijst .datum { width: 100%; } }
+
+/* ---------- Kalender: aandacht, reacties, slepen, vak- en klantdagen ---------- */
+.cel .let-op-teken { width: 16px; height: 16px; border-radius: 50%; background: var(--fout); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.cel.aandacht { box-shadow: inset 0 0 0 2px var(--fout); }
+.cel .reacties { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
+.cel.gevuld[draggable="true"] { cursor: grab; }
+.cel.gevuld[draggable="true"]:active { cursor: grabbing; }
+.cel.leeg-cel.kan-hier { background: var(--turkoois-zacht); outline: 1px dashed var(--turkoois-rand); outline-offset: -3px; }
+.cel.leeg-cel.sleepdoel { background: var(--turkoois); }
+.dagen li.vakdag { color: var(--tekst); }
+.dagen li.vakdag::before { background: var(--inkt); border-radius: 1px; }
+.dagen li.klantdag { color: var(--inkt); font-weight: 600; }
+.dagen li.klantdag::before { background: var(--turkoois); width: 7px; height: 7px; top: 4px; left: -1px; }
+
+.reactielijst { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 12px; }
+.reactielijst li { display: flex; gap: 10px; align-items: flex-start; }
+.reactielijst .tekst { flex: 1; min-width: 0; }
+.reactielijst .kop { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.reactielijst .kop .knop { margin-left: auto; }
+.reactielijst .inhoud { white-space: pre-wrap; font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; }
+.vermelding { background: var(--turkoois-zacht); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+.accountfoto.klein { width: 26px; height: 26px; font-size: 10.5px; }
+.reactie-nieuw { display: grid; gap: 8px; }
+.reactie-nieuw > .knop { justify-self: start; }
+.noem { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+.noemknop { border: 0; cursor: pointer; }
+.noemknop:hover { background: var(--turkoois-zacht); }
+
+/* ---------- Afspraken ---------- */
+table.rapport th.getal, table.rapport td.getal { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.rapport td.voortgang { min-width: 160px; }
+table.rapport td.voortgang { display: table-cell; }
+table.rapport td.voortgang .spoor { display: inline-block; vertical-align: middle; width: 110px; height: 8px; background: var(--vlak-2); border-radius: 4px; margin-right: 8px; overflow: hidden; }
+table.rapport td.voortgang .vulling { display: block; height: 100%; background: var(--inkt); border-radius: 4px; }
+table.rapport td.voortgang .vulling.klaar { background: var(--ok); }
+table.rapport tfoot td { border-top: 2px solid var(--lijn); font-weight: 600; padding: 13px 16px; }
+.overzichtblok { margin-bottom: 22px; }
+.overzichtblok h2 { font-size: 16px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.aandachtlijst { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.aandachtlijst a { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 12px; border-radius: var(--r); background: var(--papier); border: 1px solid var(--lijn); color: inherit; text-decoration: none; font-size: 13.5px; }
+.aandachtlijst a:hover { border-color: var(--inkt); }
+.aandachtlijst .wanneer { font-weight: 600; }
+.aandachtlijst .wat { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 700px) { .aandachtlijst a { grid-template-columns: 1fr; gap: 4px; } }

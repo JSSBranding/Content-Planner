@@ -130,3 +130,42 @@ export async function parseCalendarWorkbook(buffer) {
   });
   return { rows, errors };
 }
+
+/** Overzicht "afspraak tegenover geleverd" voor één maand, voor facturatie. */
+export async function exportReport({ month, rows }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Jouw Content Studio';
+  const ws = wb.addWorksheet(`Afspraken ${month}`, { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = [
+    { header: 'Klant', key: 'name', width: 34 },
+    { header: 'Posts per week', key: 'ppw', width: 15 },
+    { header: 'Kanalen', key: 'channels', width: 34 },
+    { header: 'Afgesproken', key: 'expected', width: 13 },
+    { header: 'In kalender', key: 'planned', width: 13 },
+    { header: 'Volledig ingepland', key: 'done', width: 18 },
+    { header: 'Nog te doen', key: 'open', width: 13 },
+    { header: 'Percentage', key: 'pct', width: 12 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00FFEB' } };
+  for (const r of rows) {
+    ws.addRow({ name: r.name, ppw: r.posts_per_week, channels: r.channels.map(channelLabel).join(', '), expected: r.expected, planned: r.planned,
+      done: r.done, open: r.open, pct: r.percentage == null ? '' : r.percentage / 100 });
+  }
+  ws.getColumn('pct').numFmt = '0%';
+  const total = (k) => rows.reduce((n, r) => n + r[k], 0);
+  const sum = ws.addRow({ name: 'Totaal', expected: total('expected'), planned: total('planned'), done: total('done'), open: total('open'),
+    pct: total('expected') ? total('done') / total('expected') : '' });
+  sum.font = { bold: true };
+  ws.autoFilter = { from: 'A1', to: 'H1' };
+  const info = wb.addWorksheet('Uitleg');
+  info.addRows([
+    ['Maand', month],
+    ['Afgesproken', 'Posts per week × aantal kanalen × dagen in de maand / 7, afgerond'],
+    ['Volledig ingepland', 'Posts met status Volledig ingepland of Advertising ingepland'],
+    ['Geëxporteerd', new Date().toISOString().slice(0, 16).replace('T', ' ')],
+  ]);
+  info.getColumn(1).width = 20;
+  info.getColumn(2).width = 70;
+  return wb.xlsx.writeBuffer();
+}

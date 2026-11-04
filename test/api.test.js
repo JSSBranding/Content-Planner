@@ -450,3 +450,100 @@ test('profielfoto voor klanten en accounts', async () => {
   assert.equal((await admin('PUT', `/api/users/${meDesigner.id}/avatar`, { image: png })).status, 200, 'chefkes mag het voor anderen');
   assert.ok((await admin('GET', '/api/users')).body.find((u) => u.id === meDesigner.id).avatar_url);
 });
+
+test('eigen wachtwoord wijzigen: huidig wachtwoord nodig, andere sessies uitgelogd', async () => {
+  const a = agent();
+  const b = agent();
+  await admin('POST', '/api/users', { role: 'vormgever', email: 'brand@jss.nl', password: 'branding-start-1' });
+  await a('POST', '/api/login', { email: 'brand@jss.nl', password: 'branding-start-1' });
+  await b('POST', '/api/login', { email: 'brand@jss.nl', password: 'branding-start-1' });
+  assert.equal((await a('POST', '/api/account/password', { current: 'fout', password: 'nieuw-wachtwoord-2' })).status, 400);
+  assert.equal((await a('POST', '/api/account/password', { current: 'branding-start-1', password: 'kort' })).status, 400);
+  assert.equal((await a('POST', '/api/account/password', { current: 'branding-start-1', password: 'nieuw-wachtwoord-2' })).status, 200);
+  assert.equal((await a('GET', '/api/meta')).body.user.email, 'brand@jss.nl', 'zelf blijf je ingelogd');
+  assert.equal((await b('GET', '/api/meta')).body.user, null, 'andere sessie is uitgelogd');
+  assert.equal((await b('POST', '/api/login', { email: 'brand@jss.nl', password: 'nieuw-wachtwoord-2' })).status, 200);
+});
+
+test('aandacht: binnenkort online zonder tekst of beeld', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Aandacht Test', channels: ['instagram', 'facebook'] })).body;
+  const d = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: d(1), channel: 'instagram', body: '' });
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: d(2), channel: 'facebook', body: 'Tekst', status: 'volledig_ingepland' });
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: d(10), channel: 'facebook', body: '' });
+  const list = (await admin('GET', '/api/aandacht')).body.items.filter((i) => i.client_id === c.id);
+  assert.equal(list.length, 1, 'alleen de post binnen 3 dagen die niet is ingepland');
+  assert.deepEqual(list[0].missing, ['tekst', 'beeld']);
+});
+
+test('rapportage: afgesproken tegenover ingepland, met Excel', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Rapport Test', channels: ['instagram', 'facebook'], posts_per_week: 2 })).body;
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-04-01', channel: 'instagram', body: 'a', status: 'volledig_ingepland' });
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-04-02', channel: 'facebook', body: 'b' });
+  const row = (await admin('GET', '/api/rapportage?maand=2027-04')).body.rows.find((r) => r.client_id === c.id);
+  assert.equal(row.expected, Math.round((2 * 2 * 30) / 7));
+  assert.equal(row.planned, 2);
+  assert.equal(row.done, 1);
+  assert.equal((await designer('GET', '/api/rapportage?maand=2027-04')).status, 403);
+  const xlsx = await admin('GET', '/api/rapportage.xlsx?maand=2027-04');
+  assert.equal(xlsx.status, 200);
+  assert.equal(Buffer.from(xlsx.body).subarray(0, 2).toString(), 'PK');
+});
+
+test('reacties met @vermelding: bolletje en lijst voor wie genoemd is', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Reactie Test', channels: ['instagram'] })).body;
+  const item = (await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-05-03', channel: 'instagram', body: 'Hallo' })).body;
+  const designerName = (await designer('GET', '/api/meta')).body.user.name;
+  // Zet de post voor de vormgever op 'gezien', zodat alleen de reactie hem weer nieuw maakt.
+  await designer('POST', `/api/clients/${c.id}/seen`, { section: 'kalender', ids: [item.id] });
+  await new Promise((r) => setTimeout(r, 1100));
+  assert.equal((await admin('POST', `/api/calendar/${item.id}/comments`, { body: '' })).status, 400);
+  const posted = await admin('POST', `/api/calendar/${item.id}/comments`, { body: `@${designerName} kun jij het beeld maken?` });
+  assert.equal(posted.status, 201);
+  assert.equal(posted.body.length, 1);
+  assert.equal((await admin('GET', `/api/calendar/${item.id}`)).body.comments.length, 1);
+  const cal = (await designer('GET', `/api/clients/${c.id}/calendar?from=2027-05-01&to=2027-05-31`)).body.items[0];
+  assert.equal(cal.is_new, true, 'nieuwe reactie maakt de post weer nieuw');
+  assert.equal(cal.comment_count, 1);
+  const mentions = (await designer('GET', '/api/vermeldingen')).body;
+  assert.ok(mentions.some((m) => m.item_id === item.id), 'vormgever ziet de vermelding');
+  await designer('POST', `/api/clients/${c.id}/seen`, { section: 'kalender', ids: [item.id] });
+  assert.ok(!(await designer('GET', '/api/vermeldingen')).body.some((m) => m.item_id === item.id), 'na bekijken weg');
+  assert.equal((await designer('DELETE', `/api/comments/${posted.body[0].id}`)).status, 403, 'niet andermans reactie verwijderen');
+  assert.equal((await admin('DELETE', `/api/comments/${posted.body[0].id}`)).status, 200);
+});
+
+test('branches, eigen dagen en terugkerende posts', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Terugkeer Test', channels: ['instagram', 'facebook'] })).body;
+  assert.equal((await admin('PATCH', `/api/clients/${c.id}`, { own_days: [{ date: 'morgen', name: 'x' }] })).status, 400);
+  assert.equal((await admin('PATCH', `/api/clients/${c.id}`, { recurring: [{ title: 'Weekstart', rhythm: 'week', weekday: 1, channels: [] }] })).status, 400);
+  const saved = (await admin('PATCH', `/api/clients/${c.id}`, {
+    branches: ['it', 'bestaat-niet'], own_days: [{ date: '2020-06-12', name: 'Opening', yearly: true }],
+    recurring: [{ title: 'Weekstart', rhythm: 'week', weekday: 1, channels: ['instagram'], time: '08:00' }],
+  })).body;
+  assert.deepEqual(saved.branches, ['it']);
+  assert.equal(saved.own_days[0].name, 'Opening');
+  assert.equal(saved.recurring[0].active, true);
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-03-01', channel: 'instagram', body: 'Al bezet' });
+  const preview = (await admin('GET', `/api/clients/${c.id}/terugkerend?maand=2027-03`)).body;
+  assert.deepEqual(preview.posts.map((p) => p.date), ['2027-03-08', '2027-03-15', '2027-03-22', '2027-03-29']);
+  assert.equal(preview.skipped.length, 1, 'bezette cel wordt overgeslagen, niet overschreven');
+  assert.equal((await designer('POST', `/api/clients/${c.id}/terugkerend`, { maand: '2027-03' })).status, 403);
+  const placed = (await admin('POST', `/api/clients/${c.id}/terugkerend`, { maand: '2027-03' })).body;
+  assert.deepEqual(placed, { created: 4, skipped: 1 });
+  const items = (await admin('GET', `/api/clients/${c.id}/calendar?from=2027-03-01&to=2027-03-31`)).body.items;
+  assert.equal(items.find((i) => i.publish_date === '2027-03-01').body, 'Al bezet');
+  assert.ok(items.filter((i) => i.topic === 'Weekstart').every((i) => i.status === 'placeholder_actie_nodig' && i.suggested_time === '08:00'));
+  assert.equal((await admin('GET', `/api/clients/${c.id}/terugkerend?maand=2027-03`)).body.posts.length, 0, 'tweede keer niets dubbel');
+});
+
+test('klantgeheugen: afspraken voorstellen uit opmerkingen (zonder AI)', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Geheugen Test', channels: ['instagram'], ai_memory: 'Geen prijzen noemen' })).body;
+  await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-06-01', channel: 'instagram', body: 'x', internal_notes: 'Klant wil nooit foto\'s van het magazijn. Geen prijzen noemen.' });
+  const res = await admin('POST', `/api/clients/${c.id}/afspraken-voorstel`);
+  assert.equal(res.status, 200);
+  const rules = res.body.suggestions.map((s) => s.rule);
+  assert.ok(rules.some((r) => /magazijn/.test(r)));
+  assert.ok(!rules.some((r) => /prijzen/i.test(r)), 'bestaande afspraak wordt niet opnieuw voorgesteld');
+  assert.equal((await designer('POST', `/api/clients/${c.id}/afspraken-voorstel`)).status, 403);
+});

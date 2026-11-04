@@ -25,6 +25,9 @@ copy('src/ai/voorbeeld.js', 'js/demo/lib/voorbeeld.js');
 copy('server/whatsapp.js', 'js/demo/lib/whatsapp.js');
 copy('server/constants.js', 'js/demo/lib/constants.js');
 copy('src/dagen.js', 'gedeeld/dagen.js');
+copy('src/rapport.js', 'gedeeld/rapport.js');
+copy('src/dagen.js', 'js/demo/lib/dagen.js');
+copy('src/rapport.js', 'js/demo/lib/rapport.js');
 
 // Excel: dezelfde export- en importcode als de server. ExcelJS komt als los script mee en wordt pas bij gebruik geladen.
 copy('node_modules/exceljs/dist/exceljs.min.js', 'js/demo/lib/exceljs.min.js');

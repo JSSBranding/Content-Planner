@@ -10,6 +10,9 @@ export function mapClient(row) {
     ...row,
     content_pillars: json.parse(row.content_pillars, []),
     channels: json.parse(row.channels, []),
+    branches: json.parse(row.branches, []),
+    own_days: json.parse(row.own_days, []),
+    recurring: json.parse(row.recurring, []),
     archived: Boolean(row.archived),
     avatar_url: avatarUrl('client', row.id, row.avatar_at),
   };
@@ -59,7 +62,9 @@ export function mediaForCalendarItems(db, itemIds) {
 
 export function listCalendar(db, clientId, from, to) {
   const rows = db.prepare(`
-    SELECT ci.*, COALESCE(NULLIF(ci.assignee, ''), u.name) AS assignee_name FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
+    SELECT ci.*, COALESCE(NULLIF(ci.assignee, ''), u.name) AS assignee_name,
+      (SELECT COUNT(*) FROM comments c WHERE c.calendar_item_id = ci.id) AS comment_count
+    FROM calendar_items ci LEFT JOIN users u ON u.id = ci.assignee_id
     WHERE ci.client_id = ? AND ci.publish_date BETWEEN ? AND ? ORDER BY ci.publish_date, ci.channel`).all(clientId, from, to);
   const media = mediaForCalendarItems(db, rows.map((r) => r.id));
   return rows.map((r) => ({ ...r, media: media.get(r.id) ?? [] }));

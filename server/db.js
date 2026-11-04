@@ -31,6 +31,10 @@ const ADDED_COLUMNS = [
   ['shoot_suggestions', 'done', 'INTEGER NOT NULL DEFAULT 0'],
   ['clients', 'avatar_at', 'TEXT'],
   ['users', 'avatar_at', 'TEXT'],
+  ['clients', 'branches', "TEXT NOT NULL DEFAULT '[]'"],
+  ['clients', 'own_days', "TEXT NOT NULL DEFAULT '[]'"],
+  ['clients', 'recurring', "TEXT NOT NULL DEFAULT '[]'"],
+  ['seen_items', 'seen_at', 'TEXT'],
   ['calendar_items', 'content_pillar', 'TEXT'],
   ['calendar_items', 'assignee', "TEXT NOT NULL DEFAULT ''"],
 ];

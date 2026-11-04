@@ -1,11 +1,12 @@
 import {
   h, fill, icon, field, toast, showError, modal, confirmDialog, busy, copyText, downloadUrl, mediaThumb, mediaPreview, openMenu,
-  page, initials, fmtLongDate, fmtMonth, fmtDateTime, isoDate, addDays, monthBounds, shiftMonth, isoWeek,
+  page, initials, avatar, fmtLongDate, fmtMonth, fmtDateTime, isoDate, addDays, monthBounds, shiftMonth, isoWeek,
 } from '../ui.js';
 import { api, meta, can, channelLabel, statusLabel, statusStyle } from '../api.js';
 import { clientHeader } from './clients.js';
 import { pickMedia } from './media.js';
-import { daysBetween } from '../../gedeeld/dagen.js';
+import { clientDaysBetween, describeRhythm } from '../../gedeeld/dagen.js';
+import { needsAttention, ATTENTION_DAYS } from '../../gedeeld/rapport.js';
 
 // Scrollpositie per maand bewaren, zodat de kalender na opslaan niet terugspringt.
 const scrollMemory = new Map();
@@ -30,7 +31,11 @@ export async function calendarView({ clientId, tab, query, rerender }) {
   // Feest- en actiedagen naast de datums. Actiedagen kun je verbergen; die keuze wordt onthouden.
   let showActionDays = true;
   try { showActionDays = localStorage.getItem('jcs-actiedagen') !== 'uit'; } catch { /* geen opslag */ }
-  const specialDays = daysBetween(from, to).filter((d) => showActionDays || d.type === 'feestdag');
+  // Feestdagen en eigen dagen van de klant altijd; actie- en vakdagen alleen als 'Actiedagen tonen' aan staat.
+  const specialDays = clientDaysBetween(client, from, to).filter((d) => showActionDays || d.type === 'feestdag' || d.type === 'klantdag');
+  const DAY_TITLE = { feestdag: 'Feestdag', actiedag: 'Actiedag', vakdag: 'Vakdag', klantdag: 'Eigen dag van de klant' };
+  // Posts die binnenkort online moeten maar nog tekst of beeld missen.
+  const attentionUntil = addDays(today, ATTENTION_DAYS);
   const daysOn = (date) => specialDays.filter((d) => d.date === date);
 
   // ---------- Balk boven de kalender ----------
@@ -52,6 +57,9 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       h('span', { class: 'maand' }, fmtMonth(from)),
       h('button', { type: 'button', 'aria-label': 'Volgende maand', onclick: () => { location.hash = url(shiftMonth(month, 1)); } }, icon('rechts'))),
     month !== today.slice(0, 7) ? h('button', { class: 'knop', onclick: () => { location.hash = url(today.slice(0, 7)); } }, 'Naar vandaag') : null,
+    can('editContent') && (client.recurring ?? []).some((r) => r.active) ? h('button', {
+      class: 'knop', type: 'button', title: 'Vaste posts van deze klant als placeholder in deze maand zetten', onclick: placeRecurring,
+    }, icon('geschiedenis', { size: 16 }), 'Terugkerende posts') : null,
     h('div', { style: { flex: '1' } }),
     filterBar,
     h('label', { class: 'vinkje klein-vinkje', title: 'Thema- en actiedagen zoals Dierendag en Black Friday' },
@@ -59,6 +67,37 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         type: 'checkbox', checked: showActionDays,
         onchange: (e) => { try { localStorage.setItem('jcs-actiedagen', e.target.checked ? 'aan' : 'uit'); } catch { /* geen opslag */ } rerender(); },
       }), 'Actiedagen tonen'));
+
+  // Terugkerende posts (optie op het klantprofiel) als lege placeholders in deze maand zetten.
+  async function placeRecurring() {
+    let preview;
+    try {
+      preview = await api.get(`/clients/${clientId}/terugkerend?maand=${month}`);
+    } catch (err) {
+      return showError(err);
+    }
+    const line = (p) => h('li', {}, h('strong', {}, `${fmtLongDate(p.date)}, ${channelLabel(p.channel)}`), h('span', { class: 'zacht' }, ` ${p.title} (${p.rhythm.toLowerCase()})`));
+    const ok = await modal({
+      title: `Terugkerende posts in ${fmtMonth(from)}`, width: '600px',
+      body: [
+        preview.posts.length
+          ? h('p', {}, `${preview.posts.length} post${preview.posts.length === 1 ? '' : 's'} worden als lege placeholder (status "Placeholder / actie nodig") in de kalender gezet:`)
+          : h('p', {}, 'Er hoeven deze maand geen terugkerende posts meer bij: ze staan er al, of er staat al iets op die dagen.'),
+        preview.posts.length ? h('ul', { class: 'conflictlijst' }, preview.posts.map(line)) : null,
+        preview.skipped.length ? [h('p', { class: 'zacht', style: { marginTop: '12px' } }, `Overgeslagen, omdat daar al een post staat (die blijft staan):`),
+          h('ul', { class: 'conflictlijst' }, preview.skipped.map(line))] : null,
+      ],
+      buttons: preview.posts.length ? [{ label: 'Annuleren' }, { label: 'In de kalender zetten', class: 'primair', value: true }] : [{ label: 'Sluiten', class: 'primair' }],
+    });
+    if (!ok) return;
+    try {
+      const res = await api.post(`/clients/${clientId}/terugkerend`, { maand: month });
+      toast(`${res.created} terugkerende post${res.created === 1 ? '' : 's'} toegevoegd`);
+      rerender();
+    } catch (err) {
+      showError(err);
+    }
+  }
 
   // ---------- Raster ----------
 
@@ -72,8 +111,8 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         weekStart ? h('span', { class: 'weeknr' }, `week ${isoWeek(d)}`) : null,
         h('span', { class: 'dagnr' }, date.getDate()),
         h('span', { class: 'dagnaam' }, d === today ? 'vandaag' : date.toLocaleDateString('nl-NL', { weekday: 'short' })),
-        daysOn(d).length ? h('ul', { class: 'dagen' }, daysOn(d).map((x) => h('li', { class: x.type, title: x.type === 'feestdag' ? 'Feestdag' : 'Actiedag' }, x.name))) : null),
-      channels.map((ch) => h('td', { class: 'kanaalcel' }, cell(d, ch)))));
+        daysOn(d).length ? h('ul', { class: 'dagen' }, daysOn(d).map((x) => h('li', { class: x.type, title: x.branche ? `Vakdag: ${x.branche}` : DAY_TITLE[x.type] }, x.name))) : null),
+      channels.map((ch) => h('td', { class: 'kanaalcel', dataset: { kanaal: ch } }, cell(d, ch)))));
   }
 
   function cell(date, channel) {
@@ -81,12 +120,29 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     const label = `${fmtLongDate(date)}, ${channelLabel(channel)}`;
     if (!item) {
       if (!can('editContent')) return h('div', { class: 'cel leeg-cel' });
-      return h('div', { class: 'cel leeg-cel' },
+      // Een post hierheen slepen kan binnen hetzelfde kanaal; een gevulde cel is nooit een doel.
+      return h('div', {
+        class: 'cel leeg-cel',
+        ondragover: (e) => { if (dragged?.channel === channel) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('sleepdoel'); } },
+        ondragleave: (e) => e.currentTarget.classList.remove('sleepdoel'),
+        ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove('sleepdoel'); if (dragged?.channel === channel) moveItem(dragged, date); },
+      },
         h('button', { type: 'button', class: 'open', 'aria-label': `Post toevoegen: ${label}`, onclick: () => openEditor({ publish_date: date, channel }) }, icon('plus', { size: 16 })));
     }
     const dimmed = statusFilter && item.status !== statusFilter;
     const shown = item.media.slice(0, 3);
-    return h('div', { class: `cel gevuld ${dimmed ? 'gedimd' : ''}`, style: statusStyle(item.status) },
+    const missing = needsAttention(item, today, attentionUntil);
+    return h('div', {
+      class: `cel gevuld ${dimmed ? 'gedimd' : ''} ${missing ? 'aandacht' : ''}`, style: statusStyle(item.status),
+      draggable: can('editContent'),
+      ondragstart: (e) => {
+        dragged = item;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.id);
+        table.querySelectorAll(`td[data-kanaal="${item.channel}"] .leeg-cel`).forEach((c) => c.classList.add('kan-hier'));
+      },
+      ondragend: () => { dragged = null; table.querySelectorAll('.kan-hier, .sleepdoel').forEach((c) => c.classList.remove('kan-hier', 'sleepdoel')); },
+    },
       h('button', {
         type: 'button', class: 'open', 'aria-label': `${label}, ${statusLabel(item.status)}. Openen`,
         title: statusLabel(item.status), onclick: () => openEditor(item),
@@ -96,6 +152,8 @@ export async function calendarView({ clientId, tab, query, rerender }) {
         h('span', { class: 'tijd' }, item.suggested_time ?? ''),
         item.content_pillar ? h('span', { class: 'pijler', title: 'Contentpijler' }, item.content_pillar) : null,
         h('span', { class: 'rechts' },
+          missing ? h('span', { class: 'let-op-teken', title: `Gaat ${item.publish_date === today ? 'vandaag' : 'binnenkort'} online, maar ${missing.join(' en ')} ontbreekt` }, '!') : null,
+          item.comment_count ? h('span', { class: 'reacties', title: `${item.comment_count} reactie${item.comment_count === 1 ? '' : 's'}` }, icon('reactie', { size: 14 }), item.comment_count) : null,
           item.internal_notes ? h('span', { title: `Opmerking: ${item.internal_notes}` }, icon('notitie', { size: 14 })) : null,
           item.assignee_name ? h('span', { class: 'wie', title: item.assignee_name }, initials(item.assignee_name)) : null)),
       item.body ? h('div', { class: 'celtekst' }, item.body) : h('div', { class: 'celtekst ontbreekt' }, item.topic || 'Tekst ontbreekt'),
@@ -110,6 +168,19 @@ export async function calendarView({ clientId, tab, query, rerender }) {
             action: () => quickStatus(item, s.key),
           }))),
         }, h('span', { class: 'kleurbol' })) : null));
+  }
+
+  // Slepen: een post naar een andere datum in hetzelfde kanaal. Bestaande content wordt nooit overschreven.
+  let dragged = null;
+  async function moveItem(item, date) {
+    if (date === item.publish_date) return;
+    try {
+      await api.patch(`/calendar/${item.id}`, { publish_date: date, reason: `Verplaatst van ${fmtLongDate(item.publish_date)}` });
+      toast(`Verplaatst naar ${fmtLongDate(date)}. De vorige datum staat in de geschiedenis.`);
+      rerender();
+    } catch (err) {
+      showError(err);
+    }
   }
 
   // Status wijzigen zonder het paneel te openen; alleen deze cel wordt opnieuw getekend.
@@ -328,6 +399,68 @@ export async function calendarView({ clientId, tab, query, rerender }) {
       openEditor(next);
     }
 
+    // Reacties: kort overleg bij deze post, met @naam om een collega te laten weten dat er iets voor hem of haar is.
+    const commentsHost = isNew ? null : h('div', { class: 'reacties-blok' });
+    let comments = item.comments ?? [];
+    let people = [];
+    if (!isNew) {
+      api.get('/users').then((users) => { people = users.filter((u) => !u.disabled && u.id !== meta.user.id); drawComments(); }).catch(() => {});
+      // De post is nu bekeken: bolletje van een nieuwe reactie mag weg.
+      if (start.is_new) window.dispatchEvent(new CustomEvent('jcs:posts-bekeken', { detail: [item.id] }));
+    }
+    const commentInput = h('textarea', { rows: 2, placeholder: 'Schrijf een reactie. Typ @ en een naam om iemand te noemen.', 'aria-label': 'Reactie' });
+    function withMentions(text) {
+      const names = [...people.map((p) => p.name), meta.user.name].filter(Boolean).sort((a, b) => b.length - a.length);
+      if (!names.length) return text;
+      const re = new RegExp(`(@(?:${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`, 'gi');
+      return text.split(re).map((part, i) => (i % 2 ? h('span', { class: 'vermelding' }, part) : part));
+    }
+    function drawComments() {
+      if (!commentsHost) return;
+      fill(commentsHost,
+        comments.length ? h('ul', { class: 'reactielijst' }, comments.map((c) => h('li', {},
+          avatar(c.user_name, c.avatar_url, 'accountfoto klein'),
+          h('div', { class: 'tekst' },
+            h('div', { class: 'kop' }, h('strong', {}, c.user_name), h('span', { class: 'zacht' }, fmtDateTime(c.created_at)),
+              c.mine || can('manageUsers') ? h('button', { type: 'button', class: 'knop kaal klein', onclick: () => removeComment(c) }, 'Verwijderen') : null),
+            h('div', { class: 'inhoud' }, withMentions(c.body)))))) : h('p', { class: 'zacht' }, 'Nog geen reacties.'),
+        h('div', { class: 'reactie-nieuw' },
+          commentInput,
+          people.length ? h('div', { class: 'noem' }, h('span', { class: 'zacht' }, 'Noem:'), people.map((p) => h('button', {
+            type: 'button', class: 'chip noemknop', onclick: () => {
+              const sep = commentInput.value && !/\s$/.test(commentInput.value) ? ' ' : '';
+              commentInput.value += `${sep}@${p.name} `;
+              commentInput.focus();
+            },
+          }, `@${p.name}`))) : null,
+          h('button', { type: 'button', class: 'knop klein primair', onclick: postComment }, 'Plaatsen')));
+    }
+    async function postComment() {
+      if (!commentInput.value.trim()) return commentInput.focus();
+      try {
+        comments = await api.post(`/calendar/${item.id}/comments`, { body: commentInput.value });
+        commentInput.value = '';
+        item.comment_count = comments.length;
+        const listed = items.find((i) => i.id === item.id);
+        if (listed) { listed.comment_count = comments.length; listed.is_new = false; redrawCell(listed); }
+        drawComments();
+      } catch (err) {
+        showError(err);
+      }
+    }
+    async function removeComment(c) {
+      if (!(await confirmDialog('Reactie verwijderen?', 'Deze reactie wordt verwijderd.', { confirmLabel: 'Verwijderen', danger: true }))) return;
+      try {
+        comments = await api.del(`/comments/${c.id}`);
+        const listed = items.find((i) => i.id === item.id);
+        if (listed) { listed.comment_count = comments.length; redrawCell(listed); }
+        drawComments();
+      } catch (err) {
+        showError(err);
+      }
+    }
+    drawComments();
+
     const versions = isNew ? null : h('details', { class: 'uitklap' },
       h('summary', {}, icon('geschiedenis', { size: 16 }), `Geschiedenis (${item.versions.length})`),
       item.versions.length ? h('ul', { class: 'versies' }, item.versions.map((v) => h('li', {},
@@ -389,6 +522,7 @@ export async function calendarView({ clientId, tab, query, rerender }) {
             contentEditable ? h('button', { class: 'knop klein', type: 'button', onclick: chooseMedia }, icon('beeld', { size: 15 }), mediaList.length ? 'Beeld wijzigen' : 'Beeld kiezen') : null),
           mediaHost),
         field('Interne opmerkingen', notes),
+        isNew ? null : h('div', { class: 'veld' }, h('label', {}, icon('reactie', { size: 15 }), ' Reacties'), commentsHost),
         h('details', { class: 'uitklap', open: isNew },
           h('summary', {}, icon('bewerk', { size: 16 }), isNew ? 'Datum, onderwerp en bron' : 'Datum, kanaal, onderwerp en bron'),
           h('div', { class: 'rij' }, field('Datum', date), field('Tijd (voorstel)', time), isNew ? null : field('Kanaal', channel)),
@@ -428,6 +562,16 @@ export async function calendarView({ clientId, tab, query, rerender }) {
     if (target && wrap.isConnected) openEditor(target);
   };
   document.addEventListener('jcs:open-cel', reopen);
+  // Vanaf het overzicht (vermelding of waarschuwing) direct de juiste post openen.
+  const openId = query.get('post');
+  if (openId) {
+    // Eenmalig: haal de post uit het adres, anders gaat hij bij elke verversing opnieuw open.
+    history.replaceState(null, '', url(month));
+    setTimeout(() => {
+      const target = items.find((i) => i.id === openId);
+      if (target && wrap.isConnected) openEditor(target);
+    });
+  }
   setTimeout(() => document.removeEventListener('jcs:open-cel', reopen), 3000);
 
   // ---------- Excel ----------

@@ -3,8 +3,8 @@
 // zodat de workflow altijd te testen is. AI-uitkomsten zijn altijd voorstellen.
 import Anthropic from '@anthropic-ai/sdk';
 import { CHANNELS } from './constants.js';
-import { datesBetween, examplePlan, exampleTexts, exampleShoots, shootDates } from '../src/ai/voorbeeld.js';
-import { daysBetween } from '../src/dagen.js';
+import { datesBetween, examplePlan, exampleTexts, exampleShoots, shootDates, exampleMemory } from '../src/ai/voorbeeld.js';
+import { clientDaysBetween } from '../src/dagen.js';
 
 export { datesBetween, examplePlan };
 
@@ -145,7 +145,7 @@ export async function proposePlan({ client, periodStart, periodEnd, inputs, medi
   const prompt = [
     clientContext(client),
     `\nPeriode: ${periodStart} t/m ${periodEnd}.`,
-    `\nFeest- en actiedagen in deze periode (gebruik ze alleen als ze passen bij de klant):\n${daysBetween(periodStart, periodEnd).map((d) => `- ${d.date} ${d.name}`).join('\n') || '(geen)'}`,
+    `\nBelangrijke dagen in deze periode (eigen dagen van de klant altijd meenemen; vak-, feest- en actiedagen alleen als ze passen):\n${clientDaysBetween(client, periodStart, periodEnd).map((d) => `- ${d.date} ${d.name}${d.type === 'klantdag' ? ' (eigen dag van de klant)' : d.type === 'vakdag' ? ` (vakdag ${d.branche})` : ''}`).join('\n') || '(geen)'}`,
     `\nAangeleverde klantinput (id — inhoud):`,
     inputs.length ? inputs.map((i) => `- ${i.id} — ${i.title ? `${i.title}: ` : ''}${redact(i.body).slice(0, 1500)}${i.instructions ? ` [instructies: ${redact(i.instructions)}]` : ''}`).join('\n') : '(geen; maak algemene content op basis van de strategie)',
     `\nBeschikbaar beeldmateriaal (id — soort — bestandsnaam — beschrijving — tags — eerder gebruikt):`,
@@ -306,4 +306,41 @@ export async function suggestShoots({ client, media, recentTopics, today = new D
   // Een ongeldige of te vroege/late datum vervangen door een gespreide standaarddatum.
   const fallback = shootDates(suggestions.length, today);
   return suggestions.map((s, i) => ({ ...s, date: /^\d{4}-\d{2}-\d{2}$/.test(s.date ?? '') && s.date >= earliest && s.date <= latest ? s.date : fallback[i] }));
+}
+
+// ---------- Klantgeheugen: nieuwe afspraken voorstellen ----------
+
+const MEMORY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['suggestions'],
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['rule', 'reason'],
+        properties: { rule: { type: 'string' }, reason: { type: 'string' } },
+      },
+    },
+  },
+};
+
+/**
+ * Stelt nieuwe afspraken voor het klantgeheugen voor, op basis van hoe het team AI-teksten aanpaste
+ * en wat er in opmerkingen en klantinstructies staat. Er wordt niets opgeslagen: de manager kiest.
+ */
+export async function suggestMemory({ client, pairs, notes }) {
+  if (!aiAvailable()) return exampleMemory({ client, pairs, notes });
+  const prompt = [
+    clientContext(client),
+    pairs.length ? `\nZo heeft het team AI-teksten aangepast (eerst de AI-tekst, dan de definitieve tekst):\n${pairs.slice(0, 20).map((p, i) => `${i + 1}. AI: ${redact(p.ai).slice(0, 600)}\n   Team: ${redact(p.human).slice(0, 600)}`).join('\n')}` : '',
+    notes.length ? `\nOpmerkingen en instructies:\n${notes.slice(0, 30).map((n) => `- ${redact(n.text).slice(0, 300)}`).join('\n')}` : '',
+    '\nStel maximaal 6 korte, concrete afspraken voor die nog niet in "Afspraken en aandachtspunten" staan en die helpen om voortaan direct goede teksten te schrijven.',
+    'Elke afspraak is één zin in de gebiedende wijs (bijv. "Geen prijzen noemen"). Geef per afspraak in één zin waarom (waar je het aan ziet). Geen afspraken die je niet kunt onderbouwen.',
+  ].join('\n');
+  const result = await callJson({ system: SYSTEM, prompt, schema: MEMORY_SCHEMA, effort: 'low' });
+  const known = String(client.ai_memory ?? '').toLowerCase();
+  return (result.suggestions ?? []).filter((s) => s.rule?.trim() && !known.includes(s.rule.trim().toLowerCase())).slice(0, 6);
 }

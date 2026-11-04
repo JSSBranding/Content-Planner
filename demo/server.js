@@ -4,7 +4,9 @@ import {
   PlanError, createPlan, submitForReview, editManually, applyAiRedistribution, regenerate, approve,
   addToCalendar, findConflicts, cellKey, initialStatus, PLAN_STATUS,
 } from './lib/plan.js';
-import { examplePlan, exampleShoots } from './lib/voorbeeld.js';
+import { examplePlan, exampleShoots, exampleMemory } from './lib/voorbeeld.js';
+import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm } from './lib/dagen.js';
+import { buildReport, needsAttention, ATTENTION_DAYS } from './lib/rapport.js';
 import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
@@ -19,7 +21,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 7) return saved;
+    if (saved?.version === 7) return { comments: [], ...saved };
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }
@@ -87,6 +89,7 @@ function mapItem(item) {
   return {
     ...item,
     assignee_name: item.assignee || userName(item.assignee_id),
+    comment_count: (state.comments ?? []).filter((c) => c.calendar_item_id === item.id).length,
     media: item.media.map((id) => state.media.find((m) => m.id === id)).filter(Boolean).map(mapMedia),
   };
 }
@@ -320,7 +323,10 @@ route('DELETE', '/users/:id/avatar', ({ id }) => { avatarUser(id).avatar_url = n
 // Nieuw sinds je laatste bezoek (bolletjes)
 const SECTIONS = ['kalender', 'planning', 'media'];
 const seenAt = (clientId, section) => state.seen[`${currentUser().id}|${clientId}|${section}`] ?? currentUser().created_at;
-const isUnseenPost = (i) => i.created_by !== currentUser().id && i.created_at > currentUser().created_at && !state.seenItems[`${currentUser().id}|${i.id}`];
+const seenItemAt = (i) => { const v = state.seenItems[`${currentUser().id}|${i.id}`]; return typeof v === 'string' ? v : v ? '0' : null; };
+// Nieuw: door een ander gemaakt en nog niet gezien, of een nieuwe reactie van een ander sinds je de post zag.
+const isUnseenPost = (i) => (i.created_by !== currentUser().id && i.created_at > currentUser().created_at && !seenItemAt(i))
+  || (state.comments ?? []).some((c) => c.calendar_item_id === i.id && c.user_id !== currentUser().id && c.created_at > (seenItemAt(i) ?? currentUser().created_at));
 function newsFor(clientId) {
   const me = currentUser().id;
   const after = (section) => (x, by, at) => x.client_id === clientId && x[by] !== me && x[at] > seenAt(clientId, section);
@@ -335,7 +341,7 @@ route('POST', '/clients/:id/seen', ({ id }, b) => {
   clientOr404(id);
   if (!SECTIONS.includes(b?.section)) fail(400, 'Onbekend onderdeel.');
   if (b.section === 'kalender') {
-    for (const itemId of b.ids ?? []) if (state.calendar.some((i) => i.id === itemId && i.client_id === id)) state.seenItems[`${currentUser().id}|${itemId}`] = true;
+    for (const itemId of b.ids ?? []) if (state.calendar.some((i) => i.id === itemId && i.client_id === id)) state.seenItems[`${currentUser().id}|${itemId}`] = now();
     return { ok: true };
   }
   state.seen[`${currentUser().id}|${id}|${b.section}`] = now();
@@ -376,6 +382,9 @@ function clientFields(body, current = {}) {
     channels, posts_per_week: ppw, ai_memory: str(body.ai_memory ?? current.ai_memory ?? ''), archived: Boolean(body.archived ?? current.archived),
     context: str(body.context ?? current.context ?? ''), target_audience: str(body.target_audience ?? current.target_audience ?? '', 5000),
     website: str(body.website ?? current.website ?? '', 300).trim(), contact: str(body.contact ?? current.contact ?? '', 500),
+    branches: cleanBranches(body.branches ?? current.branches ?? [], fail),
+    own_days: cleanOwnDays(body.own_days ?? current.own_days ?? [], fail),
+    recurring: cleanRecurring(body.recurring ?? current.recurring ?? [], CHANNEL_KEYS, fail),
   };
 }
 route('GET', '/clients', () => [...state.clients]
@@ -666,7 +675,121 @@ route('GET', '/calendar/:id', ({ id }) => {
   const item = itemOr404(id);
   const versions = state.versions.filter((v) => v.calendar_item_id === id).sort((a, b) => b.changed_at.localeCompare(a.changed_at))
     .map((v) => ({ id: v.id, reason: v.reason, changed_by_ai: v.changed_by_ai, changed_at: v.changed_at, changed_by_name: userName(v.changed_by) }));
-  return { ...mapItem(item), versions };
+  return { ...mapItem(item), versions, comments: commentsOf(id) };
+});
+
+// Reacties met @vermeldingen
+function commentsOf(itemId) {
+  return (state.comments ?? []).filter((c) => c.calendar_item_id === itemId).sort((a, b) => a.created_at.localeCompare(b.created_at)).map((c) => {
+    const u = state.users.find((x) => x.id === c.user_id);
+    return { ...c, mine: c.user_id === currentUser().id, user_name: u?.name ?? 'Verwijderd account', avatar_url: u?.avatar_url ?? null };
+  });
+}
+route('POST', '/calendar/:id/comments', ({ id }, b) => {
+  const item = itemOr404(id);
+  const body = str(b?.body, 2000).trim() || fail(400, 'Schrijf eerst een reactie.');
+  const lower = body.toLowerCase();
+  const mentions = state.users.filter((u) => !u.disabled && u.id !== currentUser().id && lower.includes(`@${u.name.toLowerCase()}`)).map((u) => u.id);
+  state.comments ??= [];
+  state.comments.push({ id: newId(), calendar_item_id: item.id, user_id: currentUser().id, body, mentions, created_at: now() });
+  state.seenItems[`${currentUser().id}|${item.id}`] = now();
+  return commentsOf(item.id);
+});
+route('DELETE', '/comments/:id', ({ id }) => {
+  const c = (state.comments ?? []).find((x) => x.id === id) ?? fail(404, 'Reactie niet gevonden.');
+  if (c.user_id !== currentUser().id && !can('manageUsers')) fail(403, 'Je kunt alleen je eigen reacties verwijderen.');
+  state.comments = state.comments.filter((x) => x.id !== id);
+  return commentsOf(c.calendar_item_id);
+});
+route('GET', '/vermeldingen', () => (state.comments ?? [])
+  .filter((c) => c.mentions.includes(currentUser().id) && c.user_id !== currentUser().id)
+  .map((c) => ({ c, item: state.calendar.find((i) => i.id === c.calendar_item_id) }))
+  .filter(({ c, item }) => item && !clientOr404(item.client_id).archived && c.created_at > (seenItemAt(item) ?? ''))
+  .sort((a, b) => b.c.created_at.localeCompare(a.c.created_at))
+  .map(({ c, item }) => ({ id: c.id, body: c.body, created_at: c.created_at, user_name: userName(c.user_id), item_id: item.id, publish_date: item.publish_date,
+    channel: item.channel, topic: item.topic, client_id: item.client_id, client_name: clientOr404(item.client_id).name })));
+
+// Eigen wachtwoord wijzigen
+route('POST', '/account/password', async (_, b) => {
+  const user = currentUser();
+  if (user.password_hash !== await hashPassword(str(b?.current))) fail(400, 'Je huidige wachtwoord klopt niet.');
+  if (str(b?.password).length < 10) fail(400, 'Het nieuwe wachtwoord moet minimaal 10 tekens zijn.');
+  user.password_hash = await hashPassword(b.password);
+  user.demoAccount = false; // het getoonde wachtwoord op het inlogscherm klopt dan niet meer
+  return { ok: true };
+});
+
+// Aandacht nodig
+route('GET', '/aandacht', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const until = new Date(Date.now() + ATTENTION_DAYS * 86400000).toISOString().slice(0, 10);
+  const items = state.calendar.filter((i) => !clientOr404(i.client_id).archived)
+    .map((i) => ({ i, missing: needsAttention(i, today, until) })).filter((x) => x.missing)
+    .sort((a, b) => a.i.publish_date.localeCompare(b.i.publish_date))
+    .map(({ i, missing }) => ({ id: i.id, client_id: i.client_id, client_name: clientOr404(i.client_id).name, publish_date: i.publish_date, channel: i.channel, topic: i.topic, status: i.status, missing }));
+  return { days: ATTENTION_DAYS, items };
+});
+
+// Afspraak tegenover geleverd
+const reportFor = (month) => {
+  if (!/^\d{4}-\d{2}$/.test(month ?? '')) fail(400, 'Kies een maand.');
+  return buildReport(state.clients, state.calendar, month);
+};
+route('GET', '/rapportage', (_, __, q) => { need('manageClients'); return { month: q.get('maand'), rows: reportFor(q.get('maand')) }; });
+route('GET', '/rapportage.xlsx', async (_, __, q) => {
+  need('manageClients');
+  const { exportReport } = await excel();
+  return { file: true, filename: `Afspraken_${q.get('maand')}.xlsx`, data: new Uint8Array(await exportReport({ month: q.get('maand'), rows: reportFor(q.get('maand')) })) };
+});
+
+// Klantgeheugen: afspraken laten voorstellen (vaste regels, zonder AI)
+route('POST', '/clients/:id/afspraken-voorstel', ({ id }) => {
+  need('manageClients');
+  const client = clientOr404(id);
+  const own = state.calendar.filter((i) => i.client_id === id);
+  const pairs = [];
+  for (const it of own) {
+    const versions = state.versions.filter((v) => v.calendar_item_id === it.id).sort((a, b) => a.changed_at.localeCompare(b.changed_at));
+    const aiAt = versions.findIndex((v) => v.changed_by_ai);
+    const humanAfter = aiAt >= 0 ? versions.slice(aiAt + 1).find((v) => !v.changed_by_ai) : null;
+    if (humanAfter && humanAfter.snapshot.body && humanAfter.snapshot.body !== it.body) pairs.push({ ai: humanAfter.snapshot.body, human: it.body });
+  }
+  const notes = [
+    ...own.filter((i) => i.internal_notes).map((i) => ({ text: i.internal_notes, source: 'Uit een interne opmerking bij een post' })),
+    ...state.inputs.filter((i) => i.client_id === id && i.instructions).map((i) => ({ text: i.instructions, source: 'Uit een instructie bij klantinput' })),
+  ];
+  return { suggestions: exampleMemory({ client, pairs, notes }), basedOn: { edits: pairs.length, notes: notes.length } };
+});
+
+// Terugkerende posts (optie per klant)
+function recurringFor(client, month) {
+  if (!/^\d{4}-\d{2}$/.test(month ?? '')) fail(400, 'Kies een maand.');
+  const [y, m] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const taken = new Set(state.calendar.filter((i) => i.client_id === client.id && i.publish_date >= from && i.publish_date <= to).map((i) => `${i.publish_date}|${i.channel}`));
+  const posts = [];
+  const skipped = [];
+  for (const rule of (client.recurring ?? []).filter((r) => r.active)) {
+    for (const date of recurringDates(rule, from, to)) {
+      for (const channel of rule.channels) {
+        const entry = { date, channel, title: rule.title, time: rule.time, pillar: rule.pillar, rhythm: describeRhythm(rule) };
+        if (taken.has(`${date}|${channel}`)) skipped.push(entry);
+        else { posts.push(entry); taken.add(`${date}|${channel}`); }
+      }
+    }
+  }
+  return { posts, skipped };
+}
+route('GET', '/clients/:id/terugkerend', ({ id }, _, q) => recurringFor(clientOr404(id), q.get('maand')));
+route('POST', '/clients/:id/terugkerend', ({ id }, b) => {
+  need('editContent');
+  const { posts, skipped } = recurringFor(clientOr404(id), b?.maand);
+  for (const p of posts) {
+    insertItem({ clientId: id, date: p.date, time: p.time, channel: p.channel, body: '', topic: p.title, pillar: p.pillar,
+      sourceInfo: `Terugkerende post: ${p.rhythm.toLowerCase()}`, notes: '', status: 'placeholder_actie_nodig' });
+  }
+  return { created: posts.length, skipped: skipped.length };
 });
 route('PATCH', '/calendar/:id', ({ id }, b) => {
   if (!can('updateStatus') && !can('editContent')) fail(403, 'Je hebt geen rechten voor deze actie.');

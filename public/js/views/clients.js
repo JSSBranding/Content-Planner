@@ -3,7 +3,7 @@ import { api, can, meta, channelLabel } from '../api.js';
 import { clientForm } from './settings.js';
 
 export async function clientsView({ query }) {
-  const clients = await api.get('/clients');
+  const [clients, attention, mentions] = await Promise.all([api.get('/clients'), api.get('/aandacht'), api.get('/vermeldingen')]);
   const active = clients.filter((c) => !c.archived);
   const archived = clients.filter((c) => c.archived);
   const newMode = can('manageClients') ? query.get('nieuw') : null; // '1' = één klant, 'lijst' = meerdere
@@ -13,7 +13,9 @@ export async function clientsView({ query }) {
     : null;
 
   // Per klant: wat vraagt nu aandacht?
+  const soon = (c) => attention.items.filter((i) => i.client_id === c.id).length;
   const todos = (c) => [
+    soon(c) ? `${soon(c)} post${soon(c) > 1 ? 's gaan' : ' gaat'} binnen ${attention.days} dagen online zonder tekst of beeld` : null,
     !c.channels.length ? 'Kanalen nog instellen' : null,
     c.open_plans ? `${c.open_plans} conceptplanning${c.open_plans > 1 ? 'en' : ''} wacht${c.open_plans > 1 ? 'en' : ''} op beoordeling` : null,
     c.open_inputs ? `${c.open_inputs} nieuwe klantinput` : null,
@@ -109,6 +111,8 @@ export async function clientsView({ query }) {
       actions: newButton,
     }),
     form,
+    newMode ? null : attentionBlock(attention),
+    newMode ? null : mentionsBlock(mentions),
     !newMode && can('manageClients') && active.some((c) => !c.channels.length) ? h('div', { class: 'melding let-op' }, icon('profiel'),
       h('div', {}, `${active.filter((c) => !c.channels.length).length} klanten hebben nog geen kanalen en frequentie. `,
         h('a', { href: '#/inrichten' }, 'Vul ze in één overzicht in'), '.')) : null,
@@ -117,6 +121,40 @@ export async function clientsView({ query }) {
     archived.length ? h('p', { class: 'archiefverwijzing' }, icon('archief', { size: 16 }),
       h('a', { href: '#/gearchiveerd' }, `${archived.length} gearchiveerde klant${archived.length === 1 ? '' : 'en'} bekijken`)) : null,
   );
+}
+
+// ---------- Bovenaan het overzicht: wat nu aandacht nodig heeft ----------
+
+const dayFmt = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+const whenLabel = (iso) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  return iso === today ? 'Vandaag' : iso === tomorrow ? 'Morgen' : dayFmt.format(new Date(`${iso}T12:00:00`));
+};
+
+function attentionBlock(attention) {
+  if (!attention.items.length) return null;
+  const shown = attention.items.slice(0, 8);
+  return h('section', { class: 'overzichtblok melding fout', style: { display: 'block' } },
+    h('h2', {}, icon('waarschuwing', { size: 17 }), `${attention.items.length} post${attention.items.length > 1 ? 's gaan' : ' gaat'} binnen ${attention.days} dagen online, maar is nog niet klaar`),
+    h('p', { class: 'zacht', style: { margin: 0 } }, 'Tekst of beeld ontbreekt nog. Posts die al volledig zijn ingepland, staan hier niet.'),
+    h('ul', { class: 'aandachtlijst' }, shown.map((i) => h('li', {},
+      h('a', { href: `#/klant/${i.client_id}/kalender?maand=${i.publish_date.slice(0, 7)}&post=${i.id}` },
+        h('span', { class: 'wanneer' }, whenLabel(i.publish_date)),
+        h('span', { class: 'wat' }, h('strong', {}, i.client_name), ` · ${channelLabel(i.channel)}${i.topic ? ` · ${i.topic}` : ''}`),
+        h('span', { class: 'chip let-op' }, `${i.missing.join(' en ')} ontbreekt`))))),
+    attention.items.length > shown.length ? h('p', { class: 'zacht', style: { margin: '8px 0 0' } }, `En nog ${attention.items.length - shown.length} meer.`) : null);
+}
+
+function mentionsBlock(mentions) {
+  if (!mentions.length) return null;
+  return h('section', { class: 'overzichtblok paneelblok' },
+    h('h2', {}, icon('reactie', { size: 16 }), `Je bent genoemd in ${mentions.length} reactie${mentions.length > 1 ? 's' : ''}`),
+    h('ul', { class: 'aandachtlijst' }, mentions.slice(0, 8).map((m) => h('li', {},
+      h('a', { href: `#/klant/${m.client_id}/kalender?maand=${m.publish_date.slice(0, 7)}&post=${m.item_id}`, title: m.body },
+        h('span', { class: 'wanneer' }, m.user_name ?? 'Iemand'),
+        h('span', { class: 'wat' }, h('strong', {}, m.client_name), ` · ${whenLabel(m.publish_date)}, ${channelLabel(m.channel)} · "${m.body.slice(0, 90)}"`),
+        h('span', { class: 'chip turkoois' }, 'Bekijken'))))));
 }
 
 const TABS = [

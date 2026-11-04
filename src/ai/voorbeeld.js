@@ -76,3 +76,30 @@ export function exampleShoots(client, today = new Date()) {
     date: dates[i],
   }));
 }
+
+// ---------- Klantgeheugen: afspraken voorstellen zonder AI ----------
+// Zoekt in opmerkingen en klantinstructies naar zinnen met "geen", "nooit", "altijd" enz.,
+// en kijkt of het team steeds hetzelfde aanpast aan AI-teksten (emoji's of hashtags weg, korter).
+const EMOJI = /\p{Extended_Pictographic}/u;
+const HASHTAG = /(^|\s)#\w/;
+export function exampleMemory({ client, pairs = [], notes = [] }) {
+  const known = String(client.ai_memory ?? '').toLowerCase();
+  const out = [];
+  const add = (rule, reason) => {
+    const key = rule.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim();
+    if (!key || known.includes(key) || out.some((o) => o.rule.toLowerCase() === rule.toLowerCase())) return;
+    out.push({ rule, reason });
+  };
+  const changed = pairs.filter((p) => p.ai.trim() && p.human.trim() && p.ai.trim() !== p.human.trim());
+  if (changed.filter((p) => EMOJI.test(p.ai) && !EMOJI.test(p.human)).length >= 2) add("Geen emoji's gebruiken", "Het team haalde in meerdere AI-teksten de emoji's weg.");
+  if (changed.filter((p) => HASHTAG.test(p.ai) && !HASHTAG.test(p.human)).length >= 2) add('Geen hashtags gebruiken', 'Het team haalde in meerdere AI-teksten de hashtags weg.');
+  const shorter = changed.filter((p) => p.human.length < p.ai.length * 0.7);
+  if (shorter.length >= 2 && shorter.length >= changed.length / 2) add('Houd teksten korter en bondiger', 'Het team maakte AI-teksten meestal flink korter.');
+  for (const n of notes) {
+    for (const sentence of String(n.text).split(/(?<=[.!?])\s+|\n/)) {
+      const s = sentence.trim().replace(/\s+/g, ' ');
+      if (s.length >= 8 && s.length <= 160 && /\b(geen|niet|nooit|altijd|liever|graag|vermijd|let op)\b/i.test(s)) add(s.replace(/[.!]$/, ''), n.source);
+    }
+  }
+  return out.slice(0, 6);
+}

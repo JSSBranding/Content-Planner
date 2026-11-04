@@ -138,3 +138,134 @@ export function daysBetween(from, to) {
   }
   return out;
 }
+
+// ---------- Vakdagen per branche ----------
+// Alleen dagen met een vaste of vast berekende datum. Losse jaarlijkse momenten (beurzen, jubilea)
+// zet je per klant bij "Eigen belangrijke dagen".
+// Een dag is [maand, dag, naam] of [maand, weekdag (0 = zondag), n-de (-1 = laatste), naam].
+export const BRANCHES = [
+  { key: 'eten', label: 'Eten, drinken en horeca', days: [[5, 21, 'Internationale Dag van de Thee'], [8, 5, 1, 'Internationale Bierdag'], [10, 16, 'Wereld Brooddag'], [10, 25, 'Wereldpastadag'], [11, 1, 'Wereldvegandag']] },
+  { key: 'zorg', label: 'Zorg en welzijn', days: [[5, 31, 'Wereld Niet Roken Dag'], [9, 8, 'Werelddag van de Fysiotherapie'], [9, 29, 'Wereld Hartdag'], [11, 14, 'Wereld Diabetesdag'], [12, 1, 'Wereld Aidsdag']] },
+  { key: 'onderwijs', label: 'Onderwijs en kinderopvang', days: [[1, 24, 'Internationale Dag van het Onderwijs'], [9, 8, 'Internationale Dag van de Alfabetisering']] },
+  { key: 'zakelijk', label: 'Financieel en zakelijke dienstverlening', days: [[5, 1, 'Deadline aangifte inkomstenbelasting'], [10, 31, 'Wereldspaardag'], [11, 5, 3, 'Dag van de Ondernemer']] },
+  { key: 'it', label: 'IT en techniek', days: [[2, 2, 2, 'Safer Internet Day'], [3, 31, 'Wereld Back-up Dag'], [5, 4, 1, 'Wereld Wachtwoorddag'], ['programmeur', 'Dag van de Programmeur']] },
+  { key: 'wonen', label: 'Wonen, bouw en installatie', days: [[3, 5, 'Wereld Energiebesparingsdag'], [3, 6, -1, 'Earth Hour'], [10, 1, 1, 'Wereld Habitat Dag']] },
+  { key: 'events', label: 'Bruiloften en evenementen', days: [[2, 0, 2, 'Wereldhuwelijksdag']] },
+  { key: 'sport', label: 'Sport en beweging', days: [[6, 21, 'Internationale Dag van de Yoga'], [6, 23, 'Olympische Dag']] },
+  { key: 'toerisme', label: 'Toerisme en recreatie', days: [[9, 27, 'Wereldtoerismedag']] },
+];
+
+function brancheDaysOfYear(key, y) {
+  const branche = BRANCHES.find((b) => b.key === key);
+  if (!branche) return [];
+  return branche.days.map((d) => {
+    let date;
+    if (d[0] === 'programmeur') date = shift(y, 1, 1, 255); // de 256e dag van het jaar
+    else if (d.length === 3) date = iso(y, d[0], d[1]);
+    else date = nthWeekday(y, d[0], d[1], d[2]);
+    return { date, name: d.at(-1), type: 'vakdag', branche: branche.label };
+  });
+}
+
+/**
+ * Alle dagen voor één klant: feest- en actiedagen, vakdagen van de gekozen branches en de eigen dagen van de klant.
+ * client.branches: ['eten', ...]; client.own_days: [{ date: 'JJJJ-MM-DD', name, yearly }].
+ */
+export function clientDaysBetween(client, from, to) {
+  const out = daysBetween(from, to);
+  for (let y = Number(from.slice(0, 4)); y <= Number(to.slice(0, 4)); y++) {
+    for (const key of client?.branches ?? []) for (const d of brancheDaysOfYear(key, y)) if (d.date >= from && d.date <= to) out.push(d);
+    for (const own of client?.own_days ?? []) {
+      if (!own?.date || !own.name) continue;
+      const date = own.yearly ? `${y}${own.date.slice(4)}` : own.date;
+      if ((own.yearly || Number(own.date.slice(0, 4)) === y) && date >= from && date <= to && !Number.isNaN(Date.parse(date))) {
+        out.push({ date, name: own.name, type: 'klantdag' });
+      }
+    }
+  }
+  const order = { klantdag: 0, feestdag: 1, vakdag: 2, actiedag: 3 };
+  return out.sort((a, b) => a.date.localeCompare(b.date) || order[a.type] - order[b.type]);
+}
+
+// ---------- Terugkerende posts ----------
+// rule.rhythm: 'week' (elke week op rule.weekday, 1 = maandag … 7 = zondag), 'twee-weken' (om de week, vanaf rule.start),
+// 'maand-dag' (elke maand op dag rule.day; bestaat die niet, dan de laatste dag) of 'maand-weekdag' (de rule.nth-de rule.weekday, -1 = laatste).
+export function recurringDates(rule, from, to) {
+  const out = [];
+  const start = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+  const isoOf = (d) => d.toISOString().slice(0, 10);
+  const weekday = Number(rule.weekday) % 7; // 7 (zondag) wordt 0
+  if (rule.rhythm === 'week' || rule.rhythm === 'twee-weken') {
+    const anchor = rule.start ? new Date(`${rule.start}T12:00:00Z`) : null;
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.getUTCDay() !== weekday) continue;
+      if (rule.rhythm === 'twee-weken' && anchor && Math.round((d - anchor) / 86400000 / 7) % 2 !== 0) continue;
+      out.push(isoOf(d));
+    }
+    return out;
+  }
+  for (let y = start.getUTCFullYear(), m = start.getUTCMonth() + 1; y < end.getUTCFullYear() || (y === end.getUTCFullYear() && m <= end.getUTCMonth() + 1); m === 12 ? (y++, m = 1) : m++) {
+    let date;
+    if (rule.rhythm === 'maand-dag') {
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      date = iso(y, m, Math.min(Number(rule.day) || 1, last));
+    } else if (rule.rhythm === 'maand-weekdag') {
+      date = nthWeekday(y, m, weekday, Number(rule.nth) || 1);
+    }
+    if (date && date >= from && date <= to) out.push(date);
+  }
+  return out;
+}
+
+// ---------- Controle van wat er per klant wordt opgeslagen (server en browserversie) ----------
+const isIsoDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+const text = (s, max) => String(s ?? '').trim().slice(0, max);
+
+export function cleanBranches(list, fail) {
+  if (!Array.isArray(list)) fail(400, 'Ongeldige branches.');
+  return [...new Set(list)].filter((k) => BRANCHES.some((b) => b.key === k));
+}
+
+export function cleanOwnDays(list, fail) {
+  if (!Array.isArray(list) || list.length > 200) fail(400, 'Ongeldige lijst met eigen dagen.');
+  return list.map((d, i) => {
+    if (!isIsoDate(d?.date)) fail(400, `Eigen dag ${i + 1}: kies een geldige datum.`);
+    const name = text(d.name, 120) || fail(400, `Eigen dag ${i + 1}: geef de dag een naam.`);
+    return { date: d.date, name, yearly: Boolean(d.yearly) };
+  }).sort((a, b) => a.date.slice(5).localeCompare(b.date.slice(5)));
+}
+
+export const RHYTHMS = ['week', 'twee-weken', 'maand-dag', 'maand-weekdag'];
+export function cleanRecurring(list, channelKeys, fail) {
+  if (!Array.isArray(list) || list.length > 50) fail(400, 'Ongeldige lijst met terugkerende posts.');
+  return list.map((r, i) => {
+    const title = text(r?.title, 200) || fail(400, `Terugkerende post ${i + 1}: geef een onderwerp.`);
+    if (!RHYTHMS.includes(r.rhythm)) fail(400, `Terugkerende post ${i + 1}: kies hoe vaak.`);
+    const channels = [...new Set(r.channels ?? [])].filter((c) => channelKeys.includes(c));
+    if (!channels.length) fail(400, `Terugkerende post ${i + 1}: kies minimaal één kanaal.`);
+    // Om de week: de weekdag volgt uit de eerste datum.
+    const weekday = r.rhythm === 'twee-weken' && isIsoDate(r.start) ? (new Date(`${r.start}T12:00:00Z`).getUTCDay() || 7) : Number(r.weekday ?? 1);
+    if (r.rhythm !== 'maand-dag' && !(weekday >= 1 && weekday <= 7)) fail(400, `Terugkerende post ${i + 1}: kies een dag van de week.`);
+    const day = Number(r.day ?? 1);
+    if (r.rhythm === 'maand-dag' && !(day >= 1 && day <= 31)) fail(400, `Terugkerende post ${i + 1}: kies een dag van de maand (1 t/m 31).`);
+    const nth = Number(r.nth ?? 1);
+    if (r.rhythm === 'maand-weekdag' && ![1, 2, 3, 4, -1].includes(nth)) fail(400, `Terugkerende post ${i + 1}: kies welke week van de maand.`);
+    if (r.rhythm === 'twee-weken' && !isIsoDate(r.start)) fail(400, `Terugkerende post ${i + 1}: kies de eerste datum.`);
+    const time = /^\d{2}:\d{2}$/.test(r.time ?? '') ? r.time : null;
+    return {
+      id: text(r.id, 40) || `t${Date.now().toString(36)}${i}`, title, channels, rhythm: r.rhythm, weekday, day, nth,
+      start: r.rhythm === 'twee-weken' ? r.start : null, time, pillar: text(r.pillar, 100) || null, active: r.active !== false,
+    };
+  });
+}
+
+/** Leesbare omschrijving van het ritme, bijv. "Elke maandag" of "Elke eerste vrijdag van de maand". */
+export function describeRhythm(r) {
+  const days = ['', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+  const nth = { 1: 'eerste', 2: 'tweede', 3: 'derde', 4: 'vierde', '-1': 'laatste' };
+  if (r.rhythm === 'week') return `Elke ${days[r.weekday]}`;
+  if (r.rhythm === 'twee-weken') return `Om de week op ${days[r.weekday]}`;
+  if (r.rhythm === 'maand-dag') return `Elke maand op de ${r.day}e`;
+  return `Elke ${nth[r.nth]} ${days[r.weekday]} van de maand`;
+}

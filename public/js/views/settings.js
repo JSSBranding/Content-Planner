@@ -1,6 +1,7 @@
 import { h, icon, field, toast, showError, page, modal, avatar, avatarEditor } from '../ui.js';
 import { api, meta, can } from '../api.js';
 import { clientHeader } from './clients.js';
+import { importantDaysBlock, recurringBlock, suggestMemoryButton } from './klantextra.js';
 
 export function clientForm({ client, onSaved, onCancel }) {
   const readOnly = !can('manageClients');
@@ -55,6 +56,7 @@ export function clientForm({ client, onSaved, onCancel }) {
       field('Doelen op social media', strategy),
       field('Tone of voice', tone),
       field('Afspraken en aandachtspunten', memory, 'Wat altijd of nooit moet, bijv. "geen prijzen noemen", "altijd je-vorm", "medewerker X niet herkenbaar in beeld".'),
+      readOnly ? null : suggestMemoryButton(client, memory),
       h('div', { class: 'rij' }, field('Website', website), field('Contactpersoon', contact))),
     h('div', { class: 'paneelblok' },
       h('h2', {}, 'Basis'), h('p', { class: 'zacht' }, 'Wat er wanneer en waar gepost wordt.'),
@@ -133,5 +135,5 @@ export async function settingsView({ clientId, tab, rerender }) {
       h('button', { class: 'knop', type: 'button', onclick: toggleArchive }, client.archived ? 'Weer actief maken' : 'Archiveren'),
       h('button', { class: 'knop gevaar', type: 'button', onclick: () => confirmDeleteClient(client) }, icon('prullenbak', { size: 16 }), 'Klant verwijderen'))) : null;
 
-  return page(head(), clientForm({ client, onSaved: () => rerender() }), danger);
+  return page(head(), clientForm({ client, onSaved: () => rerender() }), importantDaysBlock(client), recurringBlock(client), danger);
 }

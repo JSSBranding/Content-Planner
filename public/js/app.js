@@ -10,6 +10,7 @@ import { shootsView } from './views/shoots.js';
 import { usersView } from './views/users.js';
 import { clientSetupView } from './views/setup.js';
 import { archivedView } from './views/archived.js';
+import { reportView } from './views/report.js';
 
 const root = document.getElementById('app');
 
@@ -19,6 +20,7 @@ const routes = [
   ['/gebruikers', usersView, 'gebruikers'],
   ['/inrichten', clientSetupView, 'inrichten'],
   ['/gearchiveerd', archivedView, 'gearchiveerd'],
+  ['/afspraken', reportView, 'afspraken'],
   ['/klant/:clientId', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/kalender', calendarView, 'klant', 'kalender'],
   ['/klant/:clientId/planning', plansView, 'klant', 'planning'],
@@ -96,6 +98,7 @@ function sidebar(clients, route) {
       h('a', { class: `zijlink ${route.section === 'overzicht' ? 'actief' : ''}`, href: '#/' }, icon('kalender'), h('span', { class: 'naam' }, 'Overzicht')),
       can('manageClients') ? h('a', { class: `zijlink ${route.section === 'inrichten' ? 'actief' : ''}`, href: '#/inrichten' }, icon('profiel'), h('span', { class: 'naam' }, 'Klanten inrichten'),
         clients.some((c) => !c.archived && !c.channels.length) ? h('span', { class: 'teller', title: 'Klanten zonder kanalen' }, clients.filter((c) => !c.archived && !c.channels.length).length) : null) : null,
+      can('manageClients') ? h('a', { class: `zijlink ${route.section === 'afspraken' ? 'actief' : ''}`, href: '#/afspraken' }, icon('excel'), h('span', { class: 'naam' }, 'Afspraken')) : null,
       can('manageUsers') ? h('a', { class: `zijlink ${route.section === 'gebruikers' ? 'actief' : ''}`, href: '#/gebruikers' }, icon('gebruikers'), h('span', { class: 'naam' }, 'Team en rechten')) : null),
     h('div', { class: 'kopje' }, 'Klanten',
       can('manageClients') ? h('a', { href: '#/?nieuw=1', title: 'Nieuwe klant', 'aria-label': 'Nieuwe klant' }, icon('plus', { size: 16 })) : null),
@@ -130,10 +133,45 @@ function openMyAccount() {
     body: [
       h('div', { class: 'veld' }, h('label', {}, 'Profielfoto'), editor),
       field('Rol', h('input', { type: 'text', value: roleLabel(meta.user.role), disabled: true })),
-      field('E-mailadres', h('input', { type: 'text', value: meta.user.email, disabled: true }), 'Een ander e-mailadres of wachtwoord stelt een Chefkes in onder Team en rechten.'),
+      field('E-mailadres', h('input', { type: 'text', value: meta.user.email, disabled: true }), 'Een ander e-mailadres stelt een Chefkes in onder Team en rechten.'),
+      passwordBlock(),
     ],
     buttons: [{ label: 'Sluiten', class: 'primair', value: true }],
   });
+}
+
+// Eigen wachtwoord wijzigen. Accounts worden per rol gedeeld: wie hetzelfde account gebruikt, logt daarna opnieuw in.
+function passwordBlock() {
+  const current = h('input', { type: 'password', autocomplete: 'current-password' });
+  const next = h('input', { type: 'password', autocomplete: 'new-password', minLength: 10 });
+  const repeat = h('input', { type: 'password', autocomplete: 'new-password', minLength: 10 });
+  const message = h('div', { class: 'melding fout', hidden: true, role: 'alert' });
+  const body = h('div', { hidden: true },
+    message,
+    field('Huidig wachtwoord', current),
+    h('div', { class: 'rij' }, field('Nieuw wachtwoord', next, 'Minimaal 10 tekens.'), field('Nieuw wachtwoord herhalen', repeat)),
+    h('p', { class: 'zacht' }, 'Gebruiken collega\'s hetzelfde account? Die moeten daarna opnieuw inloggen met het nieuwe wachtwoord.'),
+    h('button', {
+      type: 'button', class: 'knop primair',
+      onclick: async () => {
+        const problem = !current.value ? 'Vul je huidige wachtwoord in.' : next.value.length < 10 ? 'Het nieuwe wachtwoord moet minimaal 10 tekens zijn.'
+          : next.value !== repeat.value ? 'De nieuwe wachtwoorden zijn niet hetzelfde.' : null;
+        if (problem) { message.textContent = problem; message.hidden = false; return; }
+        try {
+          await api.post('/account/password', { current: current.value, password: next.value });
+          toast('Wachtwoord gewijzigd. Op andere apparaten moet opnieuw worden ingelogd.');
+          body.hidden = true;
+          toggle.hidden = false;
+          for (const input of [current, next, repeat]) input.value = '';
+          message.hidden = true;
+        } catch (err) {
+          message.textContent = err.message;
+          message.hidden = false;
+        }
+      },
+    }, 'Wachtwoord opslaan'));
+  const toggle = h('button', { type: 'button', class: 'knop klein', onclick: () => { body.hidden = false; toggle.hidden = true; current.focus(); } }, 'Wachtwoord wijzigen');
+  return h('div', { class: 'veld' }, h('label', {}, 'Wachtwoord'), toggle, body);
 }
 
 // Gearchiveerde klanten staan niet in de lijst, maar zijn hier altijd terug te vinden.

@@ -14,13 +14,15 @@ import {
 import {
   getClient, mapClient, avatarUrl, listMedia, listInputs, listCalendar, getCalendarItem, getPlan, snapshotCalendarItem,
 } from './repo.js';
-import { proposePlan, writeTexts, suggestShoots, aiAvailable, AiError, MODEL } from './ai.js';
+import { proposePlan, writeTexts, suggestShoots, suggestMemory, aiAvailable, AiError, MODEL } from './ai.js';
 import { parseWhatsApp, whatsappToInput } from './whatsapp.js';
-import { exportCalendar, parseCalendarWorkbook } from './excel.js';
+import { exportCalendar, parseCalendarWorkbook, exportReport } from './excel.js';
+import { buildReport, needsAttention, ATTENTION_DAYS } from '../src/rapport.js';
 import {
   PlanError, createPlan, submitForReview, editManually, applyAiRedistribution, regenerate, approve,
   addToCalendar, findConflicts, cellKey, initialStatus, PLAN_STATUS,
 } from '../src/planning/plan.js';
+import { cleanBranches, cleanOwnDays, cleanRecurring, recurringDates, describeRhythm } from '../src/dagen.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -402,14 +404,18 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       ?? db.prepare('SELECT created_at FROM users WHERE id = ?').get(user.id).created_at;
   }
   // Nieuwe posts tellen tot je ze in de kalender in beeld hebt gehad (per post, niet per bezoek).
-  const UNSEEN_POSTS = `FROM calendar_items ci WHERE ci.client_id = ? AND ci.created_by <> ?
-    AND ci.created_at > (SELECT created_at FROM users WHERE id = ?)
-    AND NOT EXISTS (SELECT 1 FROM seen_items s WHERE s.user_id = ? AND s.item_id = ci.id)`;
+  // Ook een post met een nieuwe reactie van een ander telt als nieuw, tot je hem weer in beeld hebt gehad.
+  const UNSEEN_POSTS = `FROM calendar_items ci WHERE ci.client_id = :client AND (
+      (ci.created_by <> :user AND ci.created_at > (SELECT created_at FROM users WHERE id = :user)
+        AND NOT EXISTS (SELECT 1 FROM seen_items s WHERE s.user_id = :user AND s.item_id = ci.id))
+      OR EXISTS (SELECT 1 FROM comments c WHERE c.calendar_item_id = ci.id AND c.user_id <> :user
+        AND c.created_at > COALESCE((SELECT s.seen_at FROM seen_items s WHERE s.user_id = :user AND s.item_id = ci.id),
+          (SELECT created_at FROM users WHERE id = :user))))`;
   // Wat andere accounts hebben toegevoegd en jij nog niet hebt gezien.
   function newsFor(user, clientId) {
     const n = (sql, section) => db.prepare(sql).get(clientId, user.id, seenAt(user, clientId, section)).n;
     return {
-      kalender: db.prepare(`SELECT COUNT(*) AS n ${UNSEEN_POSTS}`).get(clientId, user.id, user.id, user.id).n,
+      kalender: db.prepare(`SELECT COUNT(*) AS n ${UNSEEN_POSTS}`).get({ client: clientId, user: user.id }).n,
       planning: n('SELECT COUNT(*) AS n FROM client_inputs WHERE client_id = ? AND created_by <> ? AND created_at > ?', 'planning')
         + n('SELECT COUNT(*) AS n FROM content_plans WHERE client_id = ? AND created_by <> ? AND created_at > ?', 'planning'),
       media: n('SELECT COUNT(*) AS n FROM media_assets WHERE client_id = ? AND uploaded_by <> ? AND uploaded_at > ?', 'media'),
@@ -432,8 +438,13 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       ai_memory: str(body.ai_memory ?? current.ai_memory), archived: (body.archived ?? current.archived) ? 1 : 0,
       context: str(body.context ?? current.context), target_audience: str(body.target_audience ?? current.target_audience, 5000),
       website: str(body.website ?? current.website, 300).trim(), contact: str(body.contact ?? current.contact, 500),
+      branches: json.str(cleanBranches(body.branches ?? current.branches ?? [], fail)),
+      own_days: json.str(cleanOwnDays(body.own_days ?? current.own_days ?? [], fail)),
+      recurring: json.str(cleanRecurring(body.recurring ?? current.recurring ?? [], CHANNEL_KEYS, fail)),
     };
   }
+  // Branches, eigen dagen en terugkerende posts staan als JSON bij de klant.
+  const saveExtras = (id, f) => db.prepare('UPDATE clients SET branches = ?, own_days = ?, recurring = ? WHERE id = ?').run(f.branches, f.own_days, f.recurring, id);
 
   api.get('/clients', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -457,6 +468,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, archived,
       context, target_audience, website, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, f.name, f.strategy, f.tone_of_voice,
       f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived, f.context, f.target_audience, f.website, f.contact);
+    saveExtras(id, f);
     res.status(201).json(getClient(db, id));
   });
 
@@ -476,7 +488,8 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     const section = req.body?.section;
     if (!SECTIONS.includes(section)) fail(400, 'Onbekend onderdeel.');
     if (section === 'kalender') {
-      const insert = db.prepare('INSERT OR IGNORE INTO seen_items (user_id, item_id) SELECT ?, id FROM calendar_items WHERE id = ? AND client_id = ?');
+      const insert = db.prepare(`INSERT INTO seen_items (user_id, item_id, seen_at) SELECT ?, id, datetime('now') FROM calendar_items WHERE id = ? AND client_id = ?
+        ON CONFLICT (user_id, item_id) DO UPDATE SET seen_at = excluded.seen_at`);
       for (const id of (Array.isArray(req.body?.ids) ? req.body.ids : [])) insert.run(req.user.id, str(id, 64), client.id);
       return res.json({ ok: true });
     }
@@ -494,6 +507,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     db.prepare(`INSERT INTO clients (id, name, strategy, tone_of_voice, content_pillars, channels, posts_per_week, ai_memory, context,
       target_audience, website, contact) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, c.strategy, c.tone_of_voice,
       json.str(c.content_pillars), json.str(c.channels), c.posts_per_week, c.ai_memory, c.context ?? '', c.target_audience ?? '', c.website ?? '', c.contact ?? '');
+    saveExtras(id, { branches: json.str(c.branches), own_days: json.str(c.own_days), recurring: json.str(c.recurring) });
     res.status(201).json(getClient(db, id));
   });
 
@@ -524,6 +538,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       ai_memory = ?, archived = ?, context = ?, target_audience = ?, website = ?, contact = ? WHERE id = ?`).run(f.name, f.strategy,
       f.tone_of_voice, f.content_pillars, f.channels, f.posts_per_week, f.ai_memory, f.archived, f.context, f.target_audience,
       f.website, f.contact, req.params.id);
+    saveExtras(req.params.id, f);
     // Onthoud wanneer een klant is gearchiveerd; bij terugzetten valt de datum weg.
     db.prepare(`UPDATE clients SET archived_at = CASE WHEN archived = 1 THEN COALESCE(archived_at, datetime('now')) ELSE NULL END
       WHERE id = ?`).run(req.params.id);
@@ -829,7 +844,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
   api.get('/clients/:id/calendar', (req, res) => {
     clientOr404(req.params.id);
     const { from, to } = monthRange(req.query);
-    const unseen = new Set(db.prepare(`SELECT ci.id ${UNSEEN_POSTS}`).all(req.params.id, req.user.id, req.user.id, req.user.id).map((r) => r.id));
+    const unseen = new Set(db.prepare(`SELECT ci.id ${UNSEEN_POSTS}`).all({ client: req.params.id, user: req.user.id }).map((r) => r.id));
     const items = listCalendar(db, req.params.id, from, to).map((i) => ({ ...i, is_new: unseen.has(i.id) }));
     const assignees = db.prepare("SELECT DISTINCT assignee FROM calendar_items WHERE assignee <> '' ORDER BY assignee COLLATE NOCASE").all().map((r) => r.assignee);
     res.json({ from, to, items, assignees });
@@ -879,7 +894,150 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     const item = calendarItemOr404(req.params.id);
     const versions = db.prepare(`SELECT v.id, v.reason, v.changed_by_ai, v.changed_at, u.name AS changed_by_name FROM calendar_item_versions v
       LEFT JOIN users u ON u.id = v.changed_by WHERE v.calendar_item_id = ? ORDER BY v.changed_at DESC, v.rowid DESC`).all(item.id);
-    res.json({ ...item, versions });
+    res.json({ ...item, versions, comments: commentsOf(item.id, req.user) });
+  });
+
+  // ---------- Eigen wachtwoord wijzigen ----------
+
+  api.post('/account/password', (req, res) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!verifyPassword(str(req.body?.current), user.password_hash)) fail(400, 'Je huidige wachtwoord klopt niet.');
+    const next = str(req.body?.password);
+    if (next.length < 10) fail(400, 'Het nieuwe wachtwoord moet minimaal 10 tekens zijn.');
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), user.id);
+    // Overal anders opnieuw inloggen, hier blijf je ingelogd.
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(user.id, req.sessionToken);
+    res.json({ ok: true });
+  });
+
+  // ---------- Aandacht nodig: binnenkort online, maar tekst of beeld ontbreekt ----------
+
+  api.get('/aandacht', (req, res) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const until = new Date(Date.now() + ATTENTION_DAYS * 86400000).toISOString().slice(0, 10);
+    const rows = db.prepare(`SELECT ci.id, ci.client_id, cl.name AS client_name, ci.publish_date, ci.channel, ci.topic, ci.body, ci.status,
+        (SELECT COUNT(*) FROM calendar_item_media m WHERE m.calendar_item_id = ci.id) AS media_count
+      FROM calendar_items ci JOIN clients cl ON cl.id = ci.client_id
+      WHERE cl.archived = 0 AND ci.publish_date BETWEEN ? AND ? ORDER BY ci.publish_date, cl.name, ci.channel`).all(today, until);
+    res.json({ days: ATTENTION_DAYS, items: rows.map(({ body, media_count, ...r }) => ({ ...r, missing: needsAttention({ ...r, body, media_count }, today, until) })).filter((r) => r.missing) });
+  });
+
+  // ---------- Afspraak tegenover geleverd ----------
+
+  function reportFor(month) {
+    if (!/^\d{4}-\d{2}$/.test(month ?? '')) fail(400, 'Kies een maand.');
+    const clients = db.prepare('SELECT * FROM clients').all().map(mapClient);
+    const items = db.prepare('SELECT client_id, publish_date, status FROM calendar_items WHERE publish_date LIKE ?').all(`${month}-%`);
+    return buildReport(clients, items, month);
+  }
+  api.get('/rapportage', requirePermission('manageClients'), (req, res) => res.json({ month: req.query.maand, rows: reportFor(req.query.maand) }));
+  api.get('/rapportage.xlsx', requirePermission('manageClients'), async (req, res) => {
+    const buffer = await exportReport({ month: req.query.maand, rows: reportFor(req.query.maand) });
+    res.attachment(`Afspraken_${req.query.maand}.xlsx`).type('xlsx').send(Buffer.from(buffer));
+  });
+
+  // ---------- Klantgeheugen: afspraken laten voorstellen ----------
+
+  api.post('/clients/:id/afspraken-voorstel', requirePermission('manageClients'), async (req, res) => {
+    const client = clientOr404(req.params.id);
+    // Paren van AI-tekst en de tekst zoals het team die daarna maakte.
+    const pairs = [];
+    const items = db.prepare("SELECT id, body FROM calendar_items WHERE client_id = ? AND body <> '' ORDER BY updated_at DESC LIMIT 200").all(client.id);
+    const versionsOf = db.prepare('SELECT snapshot, changed_by_ai FROM calendar_item_versions WHERE calendar_item_id = ? ORDER BY changed_at, rowid');
+    for (const it of items) {
+      const versions = versionsOf.all(it.id);
+      const aiAt = versions.findIndex((v) => v.changed_by_ai);
+      if (aiAt < 0) continue;
+      const humanAfter = versions.slice(aiAt + 1).find((v) => !v.changed_by_ai);
+      const aiText = humanAfter ? json.parse(humanAfter.snapshot, {}).body : null;
+      if (aiText && aiText !== it.body) pairs.push({ ai: aiText, human: it.body });
+      if (pairs.length >= 20) break;
+    }
+    const notes = [
+      ...db.prepare("SELECT internal_notes AS text FROM calendar_items WHERE client_id = ? AND internal_notes <> '' ORDER BY updated_at DESC LIMIT 30").all(client.id)
+        .map((r) => ({ text: r.text, source: 'Uit een interne opmerking bij een post' })),
+      ...db.prepare("SELECT instructions AS text FROM client_inputs WHERE client_id = ? AND instructions <> '' ORDER BY created_at DESC LIMIT 30").all(client.id)
+        .map((r) => ({ text: r.text, source: 'Uit een instructie bij klantinput' })),
+    ];
+    res.json({ suggestions: await suggestMemory({ client, pairs, notes }), basedOn: { edits: pairs.length, notes: notes.length } });
+  });
+
+  // ---------- Terugkerende posts (optie per klant) ----------
+
+  function recurringFor(client, month) {
+    if (!/^\d{4}-\d{2}$/.test(month ?? '')) fail(400, 'Kies een maand.');
+    const [y, m] = month.split('-').map(Number);
+    const from = `${month}-01`;
+    const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    const taken = new Set(db.prepare('SELECT publish_date, channel FROM calendar_items WHERE client_id = ? AND publish_date BETWEEN ? AND ?')
+      .all(client.id, from, to).map((r) => `${r.publish_date}|${r.channel}`));
+    const posts = [];
+    const skipped = [];
+    for (const rule of client.recurring.filter((r) => r.active)) {
+      for (const date of recurringDates(rule, from, to)) {
+        for (const channel of rule.channels) {
+          const entry = { date, channel, title: rule.title, time: rule.time, pillar: rule.pillar, rhythm: describeRhythm(rule) };
+          if (taken.has(`${date}|${channel}`)) skipped.push(entry);
+          else { posts.push(entry); taken.add(`${date}|${channel}`); }
+        }
+      }
+    }
+    return { posts, skipped };
+  }
+  api.get('/clients/:id/terugkerend', (req, res) => res.json(recurringFor(clientOr404(req.params.id), req.query.maand)));
+  api.post('/clients/:id/terugkerend', requirePermission('editContent'), (req, res) => {
+    const client = clientOr404(req.params.id);
+    const { posts, skipped } = recurringFor(client, req.body?.maand);
+    transaction(db, () => {
+      for (const p of posts) {
+        insertCalendarItem({ clientId: client.id, date: p.date, time: p.time, channel: p.channel, body: '', topic: p.title, pillar: p.pillar,
+          sourceInfo: `Terugkerende post: ${p.rhythm.toLowerCase()}`, notes: '', status: 'placeholder_actie_nodig', createdBy: req.user.id });
+      }
+    });
+    res.status(201).json({ created: posts.length, skipped: skipped.length });
+  });
+
+  // ---------- Reacties bij een post, met @vermeldingen ----------
+
+  function commentsOf(itemId, user) {
+    return db.prepare(`SELECT c.id, c.body, c.mentions, c.created_at, c.user_id, u.name AS user_name, u.avatar_at
+      FROM comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.calendar_item_id = ? ORDER BY c.created_at, c.rowid`).all(itemId)
+      .map(({ avatar_at, mentions, ...c }) => ({ ...c, mentions: json.parse(mentions, []), mine: c.user_id === user.id,
+        user_name: c.user_name ?? 'Verwijderd account', avatar_url: avatarUrl('user', c.user_id, avatar_at) }));
+  }
+  // @Naam van een actief account (de naam is meestal de rol, zoals "@Branding"), niet hoofdlettergevoelig.
+  function mentionsIn(body) {
+    const lower = body.toLowerCase();
+    return db.prepare('SELECT id, name FROM users WHERE disabled = 0').all().filter((u) => lower.includes(`@${u.name.toLowerCase()}`)).map((u) => u.id);
+  }
+  api.post('/calendar/:id/comments', (req, res) => {
+    const item = calendarItemOr404(req.params.id);
+    const body = str(req.body?.body, 2000).trim() || fail(400, 'Schrijf eerst een reactie.');
+    transaction(db, () => {
+      db.prepare('INSERT INTO comments (id, calendar_item_id, user_id, body, mentions) VALUES (?, ?, ?, ?, ?)')
+        .run(newId(), item.id, req.user.id, body, json.str(mentionsIn(body).filter((id) => id !== req.user.id)));
+      // Wie reageert, heeft de post gezien.
+      db.prepare(`INSERT INTO seen_items (user_id, item_id, seen_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT (user_id, item_id) DO UPDATE SET seen_at = excluded.seen_at`).run(req.user.id, item.id);
+    });
+    res.status(201).json(commentsOf(item.id, req.user));
+  });
+  api.delete('/comments/:id', (req, res) => {
+    const c = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id) ?? fail(404, 'Reactie niet gevonden.');
+    if (c.user_id !== req.user.id && !can(req.user, 'manageUsers')) fail(403, 'Je kunt alleen je eigen reacties verwijderen.');
+    db.prepare('DELETE FROM comments WHERE id = ?').run(c.id);
+    res.json(commentsOf(c.calendar_item_id, req.user));
+  });
+  // Reacties waarin jij genoemd bent en die je nog niet hebt gezien.
+  api.get('/vermeldingen', (req, res) => {
+    const rows = db.prepare(`SELECT c.id, c.body, c.created_at, u.name AS user_name, ci.id AS item_id, ci.publish_date, ci.channel, ci.topic,
+        cl.id AS client_id, cl.name AS client_name
+      FROM comments c JOIN calendar_items ci ON ci.id = c.calendar_item_id JOIN clients cl ON cl.id = ci.client_id
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE EXISTS (SELECT 1 FROM json_each(c.mentions) m WHERE m.value = :user) AND c.user_id <> :user AND cl.archived = 0
+        AND c.created_at > COALESCE((SELECT s.seen_at FROM seen_items s WHERE s.user_id = :user AND s.item_id = ci.id), '')
+      ORDER BY c.created_at DESC LIMIT 50`).all({ user: req.user.id });
+    res.json(rows);
   });
 
   api.patch('/calendar/:id', (req, res) => {
@@ -1082,6 +1240,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
   app.use('/assets', express.static(path.join(root, 'assets'), { maxAge: '7d' }));
   app.use('/styles', express.static(path.join(root, 'src', 'styles')));
   app.get('/gedeeld/dagen.js', (_req, res) => res.type('js').sendFile(path.join(root, 'src', 'dagen.js')));
+  app.get('/gedeeld/rapport.js', (_req, res) => res.type('js').sendFile(path.join(root, 'src', 'rapport.js')));
   app.use(express.static(path.join(root, 'public')));
   app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(root, 'public', 'index.html')));
 

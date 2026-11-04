@@ -204,3 +204,14 @@ CREATE TABLE IF NOT EXISTS avatars (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (kind, owner_id)
 );
+
+-- Reacties bij een post, met vermeldingen (@naam) van accounts.
+CREATE TABLE IF NOT EXISTS comments (
+  id               TEXT PRIMARY KEY,
+  calendar_item_id TEXT NOT NULL REFERENCES calendar_items(id) ON DELETE CASCADE,
+  user_id          TEXT REFERENCES users(id) ON DELETE SET NULL,
+  body             TEXT NOT NULL,
+  mentions         TEXT NOT NULL DEFAULT '[]',  -- JSON: user-id's
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS comments_item_idx ON comments (calendar_item_id, created_at);
