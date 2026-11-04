@@ -44,7 +44,12 @@ export async function clientSetupView({ query }) {
       oninput: (e) => {
         clearTimeout(timer);
         const n = Number(e.target.value);
-        if (!Number.isInteger(n) || n < 1 || n > 21) return;
+        if (!Number.isInteger(n) || n < 1 || n > 21) {
+          e.target.setAttribute('aria-invalid', 'true');
+          fill(statusCell, h('span', { class: 'chip let-op' }, 'Kies 1 t/m 21'));
+          return;
+        }
+        e.target.removeAttribute('aria-invalid');
         timer = setTimeout(() => save(c, { posts_per_week: n }, statusCell), 500);
       },
     });

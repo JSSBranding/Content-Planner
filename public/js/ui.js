@@ -61,7 +61,7 @@ export function modal({ title, body, buttons = [], width }) {
       resolve(value);
     };
     const onKey = (e) => e.key === 'Escape' && close(null);
-    const footer = h('footer', {}, buttons.map((b) => h('button', {
+    const footer = h('footer', {}, buttons.filter(Boolean).map((b) => h('button', {
       class: `knop ${b.class ?? ''}`, type: 'button',
       onclick: async () => {
         if (!b.action) return close(b.value ?? null);

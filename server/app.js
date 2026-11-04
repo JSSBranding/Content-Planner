@@ -39,9 +39,17 @@ const optTime = (s) => (s ? (isTime(s) ? s : fail(400, `Ongeldig tijdstip: ${s}`
 const str = (v, max = 20000) => String(v ?? '').slice(0, max);
 const utf8Name = (name) => Buffer.from(name, 'latin1').toString('utf8');
 
-export function createApp(db, { secureCookies = false } = {}) {
+export function createApp(db, { secureCookies = false, trustProxy = false } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  // Achter een reverse proxy (HTTPS): dan is req.ip het echte adres van de gebruiker en niet dat van de proxy.
+  app.set('trust proxy', trustProxy);
+
+  // Voor de hosting: werkt de server en is de database bereikbaar?
+  app.get('/gezond', (_req, res) => {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true });
+  });
   app.use(express.json({ limit: '2mb' }));
   app.use(sessionMiddleware(db));
   loadPermissions(db);
@@ -244,19 +252,28 @@ export function createApp(db, { secureCookies = false } = {}) {
     res.status(201).json({ ok: true });
   });
 
-  // Na 10 mislukte pogingen per e-mailadres en IP-adres volgt een pauze van 15 minuten.
+  // Na 10 mislukte pogingen per e-mailadres en IP-adres volgt een pauze van 5 minuten.
+  // Kort gehouden, omdat accounts per rol worden gedeeld: één collega met een typfout mag het team niet lang blokkeren.
+  const LOCK_MS = 5 * 60_000;
   const failedLogins = new Map();
+  const cleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [key, times] of failedLogins) if (times.every((t) => now - t >= LOCK_MS)) failedLogins.delete(key);
+    db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
+  }, 15 * 60_000);
+  cleanup.unref();
   api.post('/login', (req, res) => {
     const { email, password } = req.body ?? {};
     const key = `${str(email).trim().toLowerCase()}|${req.ip}`;
     const now = Date.now();
-    const attempts = (failedLogins.get(key) ?? []).filter((t) => now - t < 15 * 60_000);
-    if (attempts.length >= 10) fail(429, 'Te veel mislukte pogingen. Probeer het over een kwartier opnieuw.');
+    const attempts = (failedLogins.get(key) ?? []).filter((t) => now - t < LOCK_MS);
+    if (attempts.length >= 10) fail(429, 'Te veel mislukte pogingen. Probeer het over vijf minuten opnieuw.');
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(str(email).trim());
     if (!user || !verifyPassword(str(password), user.password_hash)) {
       failedLogins.set(key, [...attempts, now]);
       fail(401, 'E-mailadres of wachtwoord klopt niet.');
     }
+    if (user.disabled) fail(403, 'Dit account staat uit. Vraag een Chefkes om het weer aan te zetten.');
     failedLogins.delete(key);
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
     setSessionCookie(res, createSession(db, user.id), secureCookies);
@@ -283,8 +300,8 @@ export function createApp(db, { secureCookies = false } = {}) {
   // ---------- Gebruikers ----------
 
   api.get('/users', (req, res) => {
-    const fields = can(req.user, 'manageUsers') ? 'id, name, email, role, created_at' : 'id, name, role';
-    res.json(db.prepare(`SELECT ${fields} FROM users ORDER BY name`).all());
+    const fields = can(req.user, 'manageUsers') ? 'id, name, email, role, disabled, created_at' : 'id, name, role, disabled';
+    res.json(db.prepare(`SELECT ${fields} FROM users ORDER BY disabled, name`).all().map((u) => ({ ...u, disabled: Boolean(u.disabled) })));
   });
 
   api.post('/users', requirePermission('manageUsers'), (req, res) => {
@@ -300,14 +317,23 @@ export function createApp(db, { secureCookies = false } = {}) {
 
   api.patch('/users/:id', requirePermission('manageUsers'), (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) ?? fail(404, 'Gebruiker niet gevonden.');
-    const { name, role, password } = req.body ?? {};
+    const { name, role, password, email } = req.body ?? {};
+    const disabled = req.body?.disabled == null ? Boolean(user.disabled) : Boolean(req.body.disabled);
     if (role && !ROLE_KEYS.includes(role)) fail(400, 'Onbekende rol.');
-    if (role && role !== 'admin' && user.role === 'admin'
-      && db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n === 1) fail(400, 'Er moet minimaal één beheerder blijven.');
+    // Er moet altijd een actief Chefkes-account overblijven, anders kan niemand het team nog beheren.
+    const otherActiveAdmins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0 AND id <> ?").get(user.id).n;
+    if (user.role === 'admin' && !user.disabled && ((role && role !== 'admin') || disabled) && otherActiveAdmins === 0) {
+      fail(400, 'Er moet minimaal één actief Chefkes-account blijven.');
+    }
+    if (disabled && user.id === req.user.id) fail(400, 'Je kunt je eigen account niet uitzetten.');
     if (password && str(password).length < 10) fail(400, 'Wachtwoord moet minimaal 10 tekens zijn.');
-    db.prepare('UPDATE users SET name = ?, role = ?, password_hash = ? WHERE id = ?').run(
-      str(name).trim() || user.name, role ?? user.role, password ? hashPassword(password) : user.password_hash, user.id);
-    if (password) db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(user.id, req.sessionToken);
+    const newEmail = email == null ? user.email : str(email, 200).trim();
+    if (!newEmail.includes('@')) fail(400, 'Vul een geldig e-mailadres in.');
+    if (db.prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?').get(newEmail, user.id)) fail(409, 'Dit e-mailadres bestaat al.');
+    db.prepare('UPDATE users SET name = ?, email = ?, role = ?, password_hash = ?, disabled = ? WHERE id = ?').run(
+      str(name).trim() || user.name, newEmail, role ?? user.role, password ? hashPassword(password) : user.password_hash, disabled ? 1 : 0, user.id);
+    // Nieuw wachtwoord of account uit: overal (behalve hier) opnieuw inloggen.
+    if (password || disabled) db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(user.id, req.sessionToken ?? '');
     res.json({ ok: true });
   });
 
@@ -976,6 +1002,10 @@ export function createApp(db, { secureCookies = false } = {}) {
     if (err instanceof AiError) return res.status(502).json({ error: err.message });
     if (err instanceof multer.MulterError) return res.status(400).json({ error: `Upload mislukt: ${err.message}` });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Ongeldige gegevens.' });
+    if (err?.code === 'ENOSPC' || /SQLITE_FULL|database or disk is full/i.test(err?.message ?? '')) {
+      console.error(err);
+      return res.status(507).json({ error: 'De opslag van de server is vol. Er is niets opgeslagen; laat de beheerder ruimte vrijmaken.' });
+    }
     console.error(err);
     res.status(500).json({ error: 'Er ging iets mis op de server.' });
   });

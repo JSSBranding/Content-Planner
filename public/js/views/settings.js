@@ -7,7 +7,7 @@ export function clientForm({ client, onSaved, onCancel }) {
   const c = client ?? { name: '', strategy: '', tone_of_voice: '', content_pillars: [], channels: [], posts_per_week: 3, ai_memory: '', context: '', target_audience: '', website: '', contact: '' };
   const context = h('textarea', { rows: 5, disabled: readOnly, value: c.context ?? '', placeholder: 'Wat doet het bedrijf, wat maakt het bijzonder, welke producten of diensten zijn belangrijk, wat speelt er nu?' });
   const audience = h('textarea', { rows: 3, disabled: readOnly, value: c.target_audience ?? '', placeholder: 'Bijv. gezinnen in de wijk, 30 tot 50 jaar; bedrijven in de regio voor catering' });
-  const website = h('input', { type: 'text', disabled: readOnly, value: c.website ?? '', placeholder: 'www.voorbeeld.nl' });
+  const website = h('input', { type: 'text', disabled: readOnly, value: c.website ?? '', placeholder: 'www.bedrijfsnaam.nl' });
   const contact = h('input', { type: 'text', disabled: readOnly, value: c.contact ?? '', placeholder: 'Naam en hoe je diegene bereikt' });
   const name = h('input', { type: 'text', value: c.name, required: true, disabled: readOnly });
   const strategy = h('textarea', { rows: 3, disabled: readOnly, value: c.strategy, placeholder: 'Bijv. meer bekendheid in de wijk en meer bestellingen voor feestjes' });

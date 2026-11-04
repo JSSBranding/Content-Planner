@@ -51,7 +51,7 @@ const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(
 const optTime = (s) => (s ? (isTime(s) ? s : fail(400, `Ongeldig tijdstip: ${s}`)) : null);
 
 const currentUser = () => state.users.find((u) => u.id === state.currentUserId) ?? null;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, created_at: u.created_at });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, disabled: Boolean(u.disabled), created_at: u.created_at });
 
 // Wachtwoorden worden in de demo als SHA-256-hash bewaard, nooit leesbaar.
 export async function hashPassword(password) {
@@ -253,11 +253,12 @@ const PUBLIC = new Set(['GET /meta', 'POST /login', 'POST /logout', 'POST /demo/
 route('GET', '/meta', () => ({
   channels: CHANNELS, calendarStatuses: CALENDAR_STATUSES, planStatuses: PLAN_STATUSES, roles: ROLES, permissions: state.permissions, permissionList: PERMISSIONS,
   ai: { available: false, model: null }, needsSetup: false, user: currentUser() ? publicUser(currentUser()) : null, demo: true,
-  demoAccounts: state.users.filter((u) => u.demoAccount).map((u) => ({ name: u.name, email: u.email, role: u.role })),
+  demoAccounts: state.users.filter((u) => u.demoAccount && !u.disabled).map((u) => ({ name: u.name, email: u.email, role: u.role })),
 }));
 route('POST', '/login', async (_, b) => {
   const user = state.users.find((u) => u.email.toLowerCase() === str(b?.email).trim().toLowerCase());
   if (!user || user.password_hash !== await hashPassword(str(b?.password))) fail(401, 'E-mailadres of wachtwoord klopt niet.');
+  if (user.disabled) fail(403, 'Dit account staat uit. Vraag een Chefkes om het weer aan te zetten.');
   state.currentUserId = user.id;
   return { ok: true };
 });
@@ -271,7 +272,8 @@ route('PUT', '/permissions', (_, b) => {
 });
 
 // Gebruikers
-route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role })).sort((a, b) => a.name.localeCompare(b.name)));
+route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role, disabled: Boolean(u.disabled) }))
+  .sort((a, b) => Number(a.disabled) - Number(b.disabled) || a.name.localeCompare(b.name)));
 route('POST', '/users', async (_, b) => {
   need('manageUsers');
   if (!str(b?.email).includes('@') || !ROLE_KEYS.includes(b?.role) || str(b?.password).length < 10) {
@@ -286,9 +288,17 @@ route('PATCH', '/users/:id', async ({ id }, b) => {
   need('manageUsers');
   const user = state.users.find((u) => u.id === id) ?? fail(404, 'Gebruiker niet gevonden.');
   if (b?.role && !ROLE_KEYS.includes(b.role)) fail(400, 'Onbekende rol.');
-  if (b?.role && b.role !== 'admin' && user.role === 'admin' && state.users.filter((u) => u.role === 'admin').length === 1) fail(400, 'Er moet minimaal één beheerder blijven.');
+  const disabled = b?.disabled == null ? Boolean(user.disabled) : Boolean(b.disabled);
+  const otherActiveAdmins = state.users.filter((u) => u.role === 'admin' && !u.disabled && u.id !== user.id).length;
+  if (user.role === 'admin' && !user.disabled && ((b?.role && b.role !== 'admin') || disabled) && otherActiveAdmins === 0) {
+    fail(400, 'Er moet minimaal één actief Chefkes-account blijven.');
+  }
+  if (disabled && user.id === currentUser().id) fail(400, 'Je kunt je eigen account niet uitzetten.');
   if (b?.password && str(b.password).length < 10) fail(400, 'Wachtwoord moet minimaal 10 tekens zijn.');
-  Object.assign(user, { name: str(b?.name).trim() || user.name, role: b?.role ?? user.role });
+  const email = b?.email == null ? user.email : str(b.email, 200).trim();
+  if (!email.includes('@')) fail(400, 'Vul een geldig e-mailadres in.');
+  if (state.users.some((u) => u.id !== user.id && u.email.toLowerCase() === email.toLowerCase())) fail(409, 'Dit e-mailadres bestaat al.');
+  Object.assign(user, { name: str(b?.name).trim() || user.name, role: b?.role ?? user.role, email, disabled });
   if (b?.password) user.password_hash = await hashPassword(b.password);
   return { ok: true };
 });

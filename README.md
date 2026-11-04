@@ -43,6 +43,21 @@ Zonder `ANTHROPIC_API_KEY` werkt alles ook, maar dan maakt een vaste voorbeeldge
 | `PORT` | `3000` | Poort van de webserver. |
 | `JCS_DATA_DIR` | `./data` | Map met de database (`jouw-content-studio.sqlite`) en geüploade bestanden (`uploads/`). **Maak hier back-ups van.** |
 | `JCS_SECURE_COOKIES` | `false` | Zet op `true` zodra de app via HTTPS draait. |
+| `JCS_TRUST_PROXY` | — | Draait de app achter een reverse proxy (nginx, Caddy, de load balancer van de hosting)? Zet dan het aantal proxy's, meestal `1`. Nodig voor een eerlijke inlogbeveiliging per gebruiker. |
+| `JCS_BACKUP_DIR` | `./backups` | Waar `npm run backup` de back-ups neerzet. |
+| `JCS_BACKUP_KEEP` | `14` | Hoeveel back-ups bewaard blijven. |
+
+### Lanceren: checklist
+
+1. **HTTPS**: draai de app achter een reverse proxy met een certificaat en zet `JCS_SECURE_COOKIES=true` en `JCS_TRUST_PROXY=1`.
+2. **Uploadgrootte**: video's mogen tot 1 GB per bestand. Zet de limiet van de proxy daarop (nginx: `client_max_body_size 1g;`, standaard maar 1 MB).
+3. **Opslag**: zet `JCS_DATA_DIR` op een blijvende schijf (bij Railway/Render: een volume). Daar staan de database en alle foto's en video's.
+4. **Back-ups**: plan `npm run backup` dagelijks (cron of de taakplanner van de hosting) en zet `JCS_BACKUP_DIR` bij voorkeur op een andere schijf of laat de map meesynchroniseren. Terugzetten: stop de app, zet `jouw-content-studio.sqlite` en `uploads/` uit de back-up terug in `JCS_DATA_DIR`, start de app.
+5. **Gezondheidscontrole**: `GET /gezond` geeft `{"ok":true}` als de server en database werken. Gebruik dit als health check van de hosting.
+6. **AI**: zet `ANTHROPIC_API_KEY` en test één planning van begin tot eind. Zonder sleutel staat de app in voorbeeldmodus (zichtbaar in de zijbalk) en zijn teksten placeholders.
+7. **Eerste keer**: open de app, maak het Chefkes-account aan en voeg onder **Team en rechten** de andere accounts toe. Gaat iemand weg, wijzig dan het wachtwoord van dat account of zet het uit.
+
+De app sluit netjes af bij een herstart (SIGTERM). Na 10 foute inlogpogingen voor hetzelfde account vanaf hetzelfde adres volgt een pauze van 5 minuten.
 
 ### Browserversie (om te testen en te laten zien)
 
@@ -99,7 +114,8 @@ De tests doorlopen de hele workflow via de API (zonder AI-sleutel), de goedkeuri
 - **Thumbnails** zijn het originele bestand, door de browser verkleind. Bij zeer grote foto's is server-side verkleinen (bijv. met `sharp`) een logische vervolgstap.
 - **Alles downloaden** downloadt de bestanden één voor één, niet als zip.
 - **AI-klantgeheugen** wordt handmatig bijgehouden; de AI vult het niet zelf aan.
-- **Wachtwoord vergeten**: een beheerder stelt een nieuw wachtwoord in; er is geen e-mailherstel.
+- **Wachtwoord vergeten**: een Chefkes stelt een nieuw wachtwoord in; er is geen e-mailherstel.
+- **Accounts verwijderen** kan niet; je zet een account uit. Zo blijft zichtbaar wie wat heeft gedaan.
 - **Beeldkeuze door de AI** gebeurt op bestandsnaam, beschrijving en tags; de AI bekijkt de beelden zelf (nog) niet.
 - Het AI-pad is getest met een nagebootste Claude-client; test na het instellen van een sleutel één planning van begin tot eind.
 

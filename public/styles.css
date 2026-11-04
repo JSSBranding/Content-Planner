@@ -464,8 +464,12 @@ table.lijst { width: 100%; border-collapse: separate; border-spacing: 0; backgro
 
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; }
-  .zijbalk { position: static; height: auto; }
-  .zijbalk .klantenlijst { max-height: 180px; }
+  .zijbalk { position: sticky; top: 0; z-index: 40; height: auto; padding: 10px 12px; }
+  .zijbalk .zijtop .merk { padding: 4px 8px; }
+  .zijbalk .menuknop { display: grid; }
+  .zijbalk:not(.open) .zijinhoud { display: none; }
+  .zijbalk.open .zijinhoud { max-height: calc(100dvh - 64px); overflow-y: auto; padding-top: 10px; }
+  .zijbalk .klantenlijst { max-height: none; overflow: visible; }
   .paginakop, .inhoud-vlak { padding-left: 16px; padding-right: 16px; }
   .actiebalk { margin: 24px -16px -48px; padding: 14px 16px; }
   #toasts { left: 16px; }
@@ -563,3 +567,12 @@ table.rechten tr.vast td { background: #fafbfb; }
 .klantnaam-cel .initialen { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--vlak); font-size: 11px; font-weight: 600; flex: none; }
 .archieflijst td.rechts { text-align: right; }
 .knoppen.eind { justify-content: flex-end; flex-wrap: nowrap; }
+
+/* Zijbalk: bovenbalk met menuknop (alleen zichtbaar op smalle schermen) */
+.zijtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.zijinhoud { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.menuknop { all: unset; display: none; place-items: center; width: 40px; height: 40px; border-radius: var(--r); color: #fff; cursor: pointer; }
+.menuknop:hover { background: rgb(255 255 255 / 10%); }
+.menuknop:focus-visible { outline: 2px solid var(--turkoois); }
+input[aria-invalid="true"] { border-color: var(--fout, #d33); }
+tr.uitgezet td { opacity: .6; }

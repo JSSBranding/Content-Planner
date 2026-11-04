@@ -1,10 +1,11 @@
 import { h, icon, field, toast, showError, modal, fmtDateTime, pageHead, page, initials } from '../ui.js';
-import { api, meta, roleLabel, loadMeta } from '../api.js';
+import { api, meta, roleLabel, loadMeta, can } from '../api.js';
 
 const roleSelect = (value) => h('select', { value }, meta.roles.map((r) => h('option', { value: r.key }, r.label)));
 
 // Accounts horen bij een rol, niet bij een persoon: de naam is de rol, tenzij je zelf iets anders invult.
 export async function usersView({ rerender }) {
+  if (!can('manageUsers')) throw Object.assign(new Error('Alleen Chefkes beheren het team en de rechten.'), { status: 403 });
   const users = await api.get('/users');
 
   const role = roleSelect('social_media_manager');
@@ -30,14 +31,30 @@ export async function usersView({ rerender }) {
   async function edit(u) {
     const r = roleSelect(u.role);
     const pw = h('input', { type: 'password', minLength: 10, autocomplete: 'new-password', placeholder: 'Leeg laten om niet te wijzigen' });
+    const mail = h('input', { type: 'email', value: u.email, autocomplete: 'off' });
+    const self = u.id === meta.user.id;
     await modal({
       title: `Account ${u.email} wijzigen`,
-      body: [field('Rol', r), field('Nieuw wachtwoord', pw)],
-      buttons: [{ label: 'Annuleren' }, {
+      body: [field('E-mailadres om mee in te loggen', mail), field('Rol', r), field('Nieuw wachtwoord', pw, 'Na een nieuw wachtwoord moet iedereen met dit account opnieuw inloggen.')],
+      buttons: [
+        self ? null : {
+          label: u.disabled ? 'Account weer aanzetten' : 'Account uitzetten', class: u.disabled ? '' : 'gevaar',
+          action: async () => {
+            try {
+              await api.patch(`/users/${u.id}`, { disabled: !u.disabled });
+              toast(u.disabled ? `${u.email} kan weer inloggen` : `${u.email} staat uit en is overal uitgelogd`);
+              rerender();
+              return true;
+            } catch (err) {
+              showError(err);
+            }
+          },
+        },
+        { label: 'Annuleren' }, {
         label: 'Opslaan', class: 'primair',
         action: async () => {
           try {
-            await api.patch(`/users/${u.id}`, { role: r.value, ...(r.value !== u.role && u.name === roleLabel(u.role) && { name: roleLabel(r.value) }), ...(pw.value && { password: pw.value }) });
+            await api.patch(`/users/${u.id}`, { email: mail.value, role: r.value, ...(r.value !== u.role && u.name === roleLabel(u.role) && { name: roleLabel(r.value) }), ...(pw.value && { password: pw.value }) });
             toast('Account bijgewerkt');
             rerender();
             return true;
@@ -100,16 +117,17 @@ export async function usersView({ rerender }) {
     }, 'Rechten opslaan'),
     h('button', { class: 'knop', onclick: () => rerender() }, 'Annuleren'));
 
-  return page(pageHead({ title: 'Team en rechten', sub: `${users.length} account${users.length === 1 ? '' : 's'}` }),
+  return page(pageHead({ title: 'Team en rechten', sub: `${users.length} account${users.length === 1 ? '' : 's'}. Gaat iemand weg? Wijzig het wachtwoord van dat account, of zet het uit.` }),
     h('div', { class: 'zij-kolom' },
       h('div', {},
         h('table', { class: 'lijst sectie' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Account'), h('th', {}, 'Rol'), h('th', {}, 'Sinds'), h('th', {}))),
-          h('tbody', {}, users.map((u) => h('tr', {},
+          h('tbody', {}, users.map((u) => h('tr', { class: u.disabled ? 'uitgezet' : '' },
             h('td', {}, h('div', { class: 'knoppen', style: { flexWrap: 'nowrap' } },
               h('span', { class: 'initialen', style: { width: '32px', height: '32px', borderRadius: '50%', background: 'var(--inkt)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: '12px', fontWeight: 600, flex: 'none' } }, initials(u.name)),
               h('div', {}, h('div', { style: { fontWeight: 500 } }, u.email, u.id === meta.user.id ? h('span', { class: 'zacht' }, ' (jij)') : null)))),
-            h('td', {}, roleLabel(u.role)), h('td', { class: 'zacht' }, fmtDateTime(u.created_at)),
+            h('td', {}, roleLabel(u.role), u.disabled ? h('span', { class: 'chip let-op', style: { marginLeft: '8px' }, title: 'Kan niet inloggen' }, 'Uit') : null),
+            h('td', { class: 'zacht' }, fmtDateTime(u.created_at)),
             h('td', { style: { textAlign: 'right' } }, h('button', { class: 'knop klein', onclick: () => edit(u) }, 'Wijzigen')))))),
         h('div', { class: 'paneelblok' },
           h('h2', {}, 'Wie mag wat?'),

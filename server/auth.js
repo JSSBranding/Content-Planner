@@ -48,7 +48,7 @@ export function sessionMiddleware(db) {
     if (token) {
       const row = db.prepare(`
         SELECT u.id, u.name, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token = ? AND s.expires_at > ?`).get(token, new Date().toISOString());
+        WHERE s.token = ? AND s.expires_at > ? AND u.disabled = 0`).get(token, new Date().toISOString());
       if (row) {
         req.user = { ...row };
         req.sessionToken = token;

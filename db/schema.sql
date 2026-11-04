@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
   role          TEXT NOT NULL CHECK (role IN ('admin', 'social_media_manager', 'medewerker', 'vormgever')),
   password_hash TEXT NOT NULL,
+  disabled      INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

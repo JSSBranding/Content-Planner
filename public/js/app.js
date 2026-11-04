@@ -43,6 +43,8 @@ function match(path) {
 
 let clientSearch = '';
 let renaming = false; // tijdens hernoemen in de zijbalk wordt die niet vernieuwd
+let menuOpen = false; // op de telefoon klapt de zijbalk in tot een balk met menuknop
+window.addEventListener('hashchange', () => { menuOpen = false; });
 
 function sidebar(clients, route) {
   const list = h('nav', { class: 'klantenlijst', 'aria-label': 'Klanten' });
@@ -76,8 +78,20 @@ function sidebar(clients, route) {
     oninput: (e) => { clientSearch = e.target.value; drawList(); },
   }) : null;
 
-  return h('aside', { class: 'zijbalk' },
-    h('a', { class: 'merk', href: '#/' }, h('img', { src: 'assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), 'Jouw Content Studio'),
+  const aside = h('aside', { class: `zijbalk ${menuOpen ? 'open' : ''}` });
+  const toggle = h('button', {
+    type: 'button', class: 'menuknop', 'aria-label': 'Menu', 'aria-expanded': String(menuOpen),
+    onclick: () => {
+      menuOpen = !menuOpen;
+      aside.classList.toggle('open', menuOpen);
+      toggle.setAttribute('aria-expanded', String(menuOpen));
+    },
+  }, icon('menu', { size: 22 }));
+  return fill(aside,
+    h('div', { class: 'zijtop' },
+      h('a', { class: 'merk', href: '#/' }, h('img', { src: 'assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), 'Jouw Content Studio'),
+      toggle),
+    h('div', { class: 'zijinhoud' },
     h('nav', { 'aria-label': 'Hoofdmenu' },
       h('a', { class: `zijlink ${route.section === 'overzicht' ? 'actief' : ''}`, href: '#/' }, icon('kalender'), h('span', { class: 'naam' }, 'Overzicht')),
       can('manageClients') ? h('a', { class: `zijlink ${route.section === 'inrichten' ? 'actief' : ''}`, href: '#/inrichten' }, icon('profiel'), h('span', { class: 'naam' }, 'Klanten inrichten'),
@@ -94,7 +108,7 @@ function sidebar(clients, route) {
       h('div', { class: 'gebruiker' },
         h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(roleLabel(meta.user.role))),
         h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email)),
-        h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog')))));
+        h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog'))))));
 }
 
 // Gearchiveerde klanten staan niet in de lijst, maar zijn hier altijd terug te vinden.

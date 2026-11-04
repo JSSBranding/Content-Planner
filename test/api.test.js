@@ -340,3 +340,31 @@ test('gearchiveerde klant: datum en aantal posts bewaard, en weer terug te zette
   assert.equal(back.archived, false);
   assert.equal(back.archived_at, null);
 });
+
+test('account uitzetten en e-mailadres wijzigen; er blijft altijd een actieve Chefkes', async () => {
+  const api = agent();
+  const users = (await admin('GET', '/api/users')).body;
+  const me = users.find((u) => u.role === 'admin');
+  assert.equal((await admin('PATCH', `/api/users/${me.id}`, { disabled: true })).status, 400, 'eigen account niet uitzetten');
+
+  const created = await admin('POST', '/api/users', { role: 'medewerker', email: 'stagiair@jss.nl', password: 'stage-wachtwoord-1' });
+  const id = created.body.id;
+  assert.equal((await api('POST', '/api/login', { email: 'stagiair@jss.nl', password: 'stage-wachtwoord-1' })).status, 200);
+  assert.equal((await admin('PATCH', `/api/users/${id}`, { email: 'stage@jss.nl' })).status, 200);
+  assert.equal((await api('POST', '/api/login', { email: 'stage@jss.nl', password: 'stage-wachtwoord-1' })).status, 200, 'inloggen met nieuw adres');
+  assert.equal((await admin('PATCH', `/api/users/${id}`, { email: me.email })).status, 409, 'geen dubbel adres');
+
+  assert.equal((await admin('PATCH', `/api/users/${id}`, { disabled: true })).status, 200);
+  const login = await api('POST', '/api/login', { email: 'stage@jss.nl', password: 'stage-wachtwoord-1' });
+  assert.equal(login.status, 403);
+  assert.match(login.body.error, /staat uit/);
+  assert.equal((await admin('GET', '/api/users')).body.find((u) => u.id === id).disabled, true);
+  assert.equal((await admin('PATCH', `/api/users/${id}`, { disabled: false })).status, 200);
+  assert.equal((await api('POST', '/api/login', { email: 'stage@jss.nl', password: 'stage-wachtwoord-1' })).status, 200);
+});
+
+test('gezondheidscontrole voor de hosting', async () => {
+  const res = await fetch(`${base}/gezond`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+});

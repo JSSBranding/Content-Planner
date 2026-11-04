@@ -138,7 +138,8 @@ const PLAN_SCHEMA = {
 export async function proposePlan({ client, periodStart, periodEnd, inputs, media, occupied, wishes, previous, recentTopics = [] }) {
   const allowedMedia = media.filter(mediaAllowedForAi);
   if (!aiAvailable()) {
-    return { ...examplePlan({ client, periodStart, periodEnd, inputs, media: allowedMedia }), source: 'voorbeeld' };
+    const safeInputs = inputs.map((i) => ({ ...i, title: redact(i.title), body: redact(i.body) }));
+    return { ...examplePlan({ client, periodStart, periodEnd, inputs: safeInputs, media: allowedMedia }), source: 'voorbeeld' };
   }
 
   const prompt = [
@@ -238,7 +239,7 @@ const CHANNEL_STYLE = {
 
 /** Schrijft per post en per kanaal een tekst. posts: [{ topic, channels, pillar, input, media }]. */
 export async function writeTexts({ client, posts, examples = [] }) {
-  if (!aiAvailable()) return posts.map((p) => exampleTexts(client, p));
+  if (!aiAvailable()) return posts.map((p) => exampleTexts(client, p.input ? { ...p, input: { ...p.input, body: redact(p.input.body) } } : p));
 
   const prompt = [
     clientContext(client),

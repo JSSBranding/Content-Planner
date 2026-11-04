@@ -26,6 +26,7 @@ const ADDED_COLUMNS = [
   ['clients', 'website', "TEXT NOT NULL DEFAULT ''"],
   ['clients', 'contact', "TEXT NOT NULL DEFAULT ''"],
   ['clients', 'archived_at', 'TEXT'],
+  ['users', 'disabled', 'INTEGER NOT NULL DEFAULT 0'],
   ['calendar_items', 'content_pillar', 'TEXT'],
   ['calendar_items', 'assignee', "TEXT NOT NULL DEFAULT ''"],
 ];
