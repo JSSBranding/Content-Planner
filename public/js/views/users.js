@@ -1,4 +1,4 @@
-import { h, icon, field, toast, showError, modal, fmtDateTime, pageHead, page, initials } from '../ui.js';
+import { h, icon, field, toast, showError, modal, fmtDateTime, pageHead, page, avatar, avatarEditor } from '../ui.js';
 import { api, meta, roleLabel, loadMeta, can } from '../api.js';
 
 const roleSelect = (value) => h('select', { value }, meta.roles.map((r) => h('option', { value: r.key }, r.label)));
@@ -33,9 +33,21 @@ export async function usersView({ rerender }) {
     const pw = h('input', { type: 'password', minLength: 10, autocomplete: 'new-password', placeholder: 'Leeg laten om niet te wijzigen' });
     const mail = h('input', { type: 'email', value: u.email, autocomplete: 'off' });
     const self = u.id === meta.user.id;
+    let fotoChanged = false;
     await modal({
       title: `Account ${u.email} wijzigen`,
-      body: [field('E-mailadres om mee in te loggen', mail), field('Rol', r), field('Nieuw wachtwoord', pw, 'Na een nieuw wachtwoord moet iedereen met dit account opnieuw inloggen.')],
+      body: [
+        h('div', { class: 'veld' }, h('label', {}, 'Profielfoto'), avatarEditor({
+          name: u.name, url: u.avatar_url,
+          save: async (image) => {
+            const res = image ? await api.put(`/users/${u.id}/avatar`, { image }) : await api.del(`/users/${u.id}/avatar`);
+            u.avatar_url = res.avatar_url;
+            if (u.id === meta.user.id) meta.user.avatar_url = res.avatar_url;
+            fotoChanged = true;
+            return res.avatar_url;
+          },
+        })),
+        field('E-mailadres om mee in te loggen', mail), field('Rol', r), field('Nieuw wachtwoord', pw, 'Na een nieuw wachtwoord moet iedereen met dit account opnieuw inloggen.')],
       buttons: [
         self ? null : {
           label: u.disabled ? 'Account weer aanzetten' : 'Account uitzetten', class: u.disabled ? '' : 'gevaar',
@@ -64,6 +76,7 @@ export async function usersView({ rerender }) {
         },
       }],
     });
+    if (fotoChanged) rerender();
   }
 
   // ---------- Rechten per rol ----------
@@ -124,7 +137,7 @@ export async function usersView({ rerender }) {
           h('thead', {}, h('tr', {}, h('th', {}, 'Account'), h('th', {}, 'Rol'), h('th', {}, 'Sinds'), h('th', {}))),
           h('tbody', {}, users.map((u) => h('tr', { class: u.disabled ? 'uitgezet' : '' },
             h('td', {}, h('div', { class: 'knoppen', style: { flexWrap: 'nowrap' } },
-              h('span', { class: 'initialen', style: { width: '32px', height: '32px', borderRadius: '50%', background: 'var(--inkt)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: '12px', fontWeight: 600, flex: 'none' } }, initials(u.name)),
+              avatar(u.name, u.avatar_url, 'accountfoto'),
               h('div', {}, h('div', { style: { fontWeight: 500 } }, u.email, u.id === meta.user.id ? h('span', { class: 'zacht' }, ' (jij)') : null)))),
             h('td', {}, roleLabel(u.role), u.disabled ? h('span', { class: 'chip let-op', style: { marginLeft: '8px' }, title: 'Kan niet inloggen' }, 'Uit') : null),
             h('td', { class: 'zacht' }, fmtDateTime(u.created_at)),

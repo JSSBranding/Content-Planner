@@ -133,14 +133,90 @@ export function openMenu(anchor, items) {
 }
 
 // Vaste paginaopbouw: een kop (met titel, acties en eventueel tabs) en het werkvlak eronder.
-export function pageHead({ title, titleMenu, sub, actions, tabs }) {
-  const heading = titleMenu ? h('div', { class: 'titel-met-menu' }, h('h1', {}, title), titleMenu) : h('h1', {}, title);
+export function pageHead({ title, titleIcon, titleMenu, sub, actions, tabs }) {
+  const heading = titleMenu || titleIcon ? h('div', { class: 'titel-met-menu' }, titleIcon ?? null, h('h1', {}, title), titleMenu ?? null) : h('h1', {}, title);
   return h('header', { class: `paginakop ${tabs ? '' : 'zonder-tabs'}` },
     h('div', { class: 'titelrij' }, h('div', {}, heading, sub ? h('div', { class: 'sub' }, sub) : null),
       actions ? h('div', { class: 'acties knoppen' }, actions) : null),
     tabs ?? null);
 }
 export const page = (head, ...content) => [head, h('div', { class: 'inhoud-vlak' }, content)];
+
+// Profielfoto, of de initialen als er (nog) geen foto is. Zelfde maat en vorm via de klasse.
+export function avatar(name, url, cls = 'initialen') {
+  if (!url) return h('span', { class: cls }, initials(name));
+  const img = h('img', { class: `${cls} avatarfoto`, src: url, alt: '', loading: 'lazy', decoding: 'async' });
+  img.addEventListener('error', () => img.replaceWith(h('span', { class: cls }, initials(name))), { once: true });
+  return img;
+}
+
+// Laat een foto kiezen en maakt er een vierkant van 256 px van (midden bijgesneden), als JPEG.
+// Zo blijft de foto klein, wat de foto ook was: een telefoonfoto van 5 MB wordt ongeveer 20 kB.
+export function chooseAvatarImage() {
+  return new Promise((resolve) => {
+    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/heic,image/*' });
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      if (!file) return resolve(null);
+      try {
+        const bitmap = await createImageBitmap(file);
+        const side = Math.min(bitmap.width, bitmap.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; // transparante logo's krijgen een witte achtergrond
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256);
+        resolve(canvas.toDataURL('image/jpeg', 0.86));
+      } catch {
+        toast('Deze foto kan niet worden gelezen. Kies een JPG of PNG.', 'fout');
+        resolve(null);
+      }
+    });
+    input.click();
+  });
+}
+
+/** Blok om een profielfoto te kiezen, te wijzigen of te verwijderen. save(dataUrl | null) geeft de nieuwe URL terug. */
+export function avatarEditor({ name, url, save, disabled = false, hint }) {
+  let current = url;
+  const preview = h('span', { class: 'avatarvoorbeeld' });
+  const buttons = h('div', { class: 'knoppen' });
+  function draw() {
+    fill(preview, avatar(name, current, 'initialen groot'));
+    fill(buttons, disabled ? null : [
+      h('button', {
+        type: 'button', class: 'knop klein',
+        onclick: async () => {
+          const image = await chooseAvatarImage();
+          if (!image) return;
+          try {
+            current = await save(image);
+            toast('Profielfoto opgeslagen');
+            draw();
+          } catch (err) {
+            showError(err);
+          }
+        },
+      }, icon('upload', { size: 15 }), current ? 'Andere foto' : 'Foto kiezen'),
+      current ? h('button', {
+        type: 'button', class: 'knop klein kaal',
+        onclick: async () => {
+          try {
+            current = await save(null);
+            toast('Profielfoto verwijderd');
+            draw();
+          } catch (err) {
+            showError(err);
+          }
+        },
+      }, 'Verwijderen') : null,
+    ]);
+  }
+  draw();
+  return h('div', { class: 'avatarbewerker' }, preview, h('div', {}, buttons, h('div', { class: 'hulp' }, hint ?? 'Een vierkante foto of logo werkt het best. Wordt automatisch bijgesneden.')));
+}
 
 export function initials(name) {
   const words = String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);

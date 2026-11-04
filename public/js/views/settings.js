@@ -1,4 +1,4 @@
-import { h, icon, field, toast, showError, page, modal } from '../ui.js';
+import { h, icon, field, toast, showError, page, modal, avatar, avatarEditor } from '../ui.js';
 import { api, meta, can } from '../api.js';
 import { clientHeader } from './clients.js';
 
@@ -58,6 +58,16 @@ export function clientForm({ client, onSaved, onCancel }) {
       h('div', { class: 'rij' }, field('Website', website), field('Contactpersoon', contact))),
     h('div', { class: 'paneelblok' },
       h('h2', {}, 'Basis'), h('p', { class: 'zacht' }, 'Wat er wanneer en waar gepost wordt.'),
+      h('div', { class: 'veld' }, h('label', {}, 'Profielfoto of logo'), avatarEditor({
+        name: c.name, url: c.avatar_url, disabled: readOnly,
+        hint: 'Bijvoorbeeld het logo van de klant. Staat in de zijbalk, op het overzicht en bovenaan de klantpagina.',
+        save: async (image) => {
+          const res = image ? await api.put(`/clients/${client.id}/avatar`, { image }) : await api.del(`/clients/${client.id}/avatar`);
+          window.dispatchEvent(new CustomEvent('jcs:zijbalk'));
+          document.querySelector('.paginakop .titelfoto')?.replaceWith(avatar(c.name, res.avatar_url, 'titelfoto'));
+          return res.avatar_url;
+        },
+      })),
       field('Klantnaam', name),
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
       field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),

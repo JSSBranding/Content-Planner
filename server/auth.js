@@ -47,10 +47,10 @@ export function sessionMiddleware(db) {
     const token = readCookie(req, COOKIE);
     if (token) {
       const row = db.prepare(`
-        SELECT u.id, u.name, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id
+        SELECT u.id, u.name, u.email, u.role, u.avatar_at FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token = ? AND s.expires_at > ? AND u.disabled = 0`).get(token, new Date().toISOString());
       if (row) {
-        req.user = { ...row };
+        req.user = { ...row, avatar_url: row.avatar_at ? `/api/avatar/user/${row.id}?v=${encodeURIComponent(row.avatar_at)}` : null };
         req.sessionToken = token;
       }
     }

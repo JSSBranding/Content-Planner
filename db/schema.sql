@@ -193,3 +193,14 @@ CREATE TABLE IF NOT EXISTS shoot_suggestions (
   done        INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Profielfoto's van klanten en accounts, klein en vierkant (verkleind in de browser).
+-- Apart van de klant- en accounttabellen, zodat lijsten licht blijven.
+CREATE TABLE IF NOT EXISTS avatars (
+  kind       TEXT NOT NULL CHECK (kind IN ('client', 'user')),
+  owner_id   TEXT NOT NULL,
+  mime       TEXT NOT NULL,
+  data       BLOB NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (kind, owner_id)
+);

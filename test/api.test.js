@@ -422,3 +422,31 @@ test('beeld dat in posts zit: eerst melding, na bevestiging verwijderd en posts 
   assert.equal(item.media.length, 0);
   assert.ok((await admin('GET', `/api/calendar/${item.id}`)).body.versions.length >= 1, 'vorige versie bewaard');
 });
+
+test('profielfoto voor klanten en accounts', async () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const c = (await admin('POST', '/api/clients', { name: 'Foto Test', channels: ['instagram'] })).body;
+  assert.equal(c.avatar_url, null);
+  assert.equal((await admin('PUT', `/api/clients/${c.id}/avatar`, { image: 'data:text/html;base64,PGgxPg==' })).status, 400, 'geen html');
+  assert.equal((await admin('PUT', `/api/clients/${c.id}/avatar`, { image: 'data:image/png;base64,PGgxPg==' })).status, 400, 'geen nep-png');
+  assert.equal((await designer('PUT', `/api/clients/${c.id}/avatar`, { image: png })).status, 403);
+  const set = await admin('PUT', `/api/clients/${c.id}/avatar`, { image: png });
+  assert.equal(set.status, 200);
+  assert.match(set.body.avatar_url, /^\/api\/avatar\/client\//);
+  assert.equal((await admin('GET', `/api/clients/${c.id}`)).body.avatar_url, set.body.avatar_url);
+  const img = await admin('GET', set.body.avatar_url);
+  assert.equal(img.status, 200);
+  assert.equal(Buffer.from(img.body)[1], 0x50, 'het is de png');
+  assert.equal((await admin('DELETE', `/api/clients/${c.id}/avatar`)).status, 200);
+  assert.equal((await admin('GET', `/api/clients/${c.id}`)).body.avatar_url, null);
+
+  // Eigen account: iedereen mag de eigen foto wijzigen, niet die van een ander.
+  const meDesigner = (await designer('GET', '/api/meta')).body.user;
+  const own = await designer('PUT', `/api/users/${meDesigner.id}/avatar`, { image: png });
+  assert.equal(own.status, 200);
+  assert.equal((await designer('GET', '/api/meta')).body.user.avatar_url, own.body.avatar_url);
+  const adminId = (await admin('GET', '/api/meta')).body.user.id;
+  assert.equal((await designer('PUT', `/api/users/${adminId}/avatar`, { image: png })).status, 403);
+  assert.equal((await admin('PUT', `/api/users/${meDesigner.id}/avatar`, { image: png })).status, 200, 'chefkes mag het voor anderen');
+  assert.ok((await admin('GET', '/api/users')).body.find((u) => u.id === meDesigner.id).avatar_url);
+});

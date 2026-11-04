@@ -1,6 +1,9 @@
 // Leesfuncties die databaserijen omzetten naar nette objecten voor de API.
 import { json } from './db.js';
 
+// Adres van een profielfoto; het tijdstip in de URL zorgt dat een nieuwe foto direct zichtbaar is.
+export const avatarUrl = (kind, id, at) => (at ? `/api/avatar/${kind}/${id}?v=${encodeURIComponent(at)}` : null);
+
 export function mapClient(row) {
   if (!row) return null;
   return {
@@ -8,6 +11,7 @@ export function mapClient(row) {
     content_pillars: json.parse(row.content_pillars, []),
     channels: json.parse(row.channels, []),
     archived: Boolean(row.archived),
+    avatar_url: avatarUrl('client', row.id, row.avatar_at),
   };
 }
 

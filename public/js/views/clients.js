@@ -1,4 +1,4 @@
-import { h, fill, icon, field, toast, showError, emptyState, pageHead, page, initials, openMenu } from '../ui.js';
+import { h, fill, icon, field, toast, showError, emptyState, pageHead, page, avatar, openMenu } from '../ui.js';
 import { api, can, meta, channelLabel } from '../api.js';
 import { clientForm } from './settings.js';
 
@@ -32,7 +32,7 @@ export async function clientsView({ query }) {
       },
     }, icon('meer', { size: 16 }));
     return h('div', { class: 'kaarthouder' }, more, h('a', { class: 'klantkaart', href: `#/klant/${c.id}/${c.channels.length ? 'kalender' : 'instellingen'}` },
-      h('div', { class: 'kop' }, h('span', { class: 'initialen' }, initials(c.name)),
+      h('div', { class: 'kop' }, avatar(c.name, c.avatar_url),
         h('div', {}, h('h2', {}, c.name),
           h('div', { class: 'zacht' }, c.channels.length ? `${c.posts_per_week} posts per week op ${c.channels.map(channelLabel).join(', ')}` : 'Nog niet ingericht'))),
       h('div', { class: 'todo' },
@@ -150,6 +150,7 @@ export async function clientHeader(clientId, tab) {
     client,
     head: (actions) => pageHead({
       title: client.name,
+      titleIcon: avatar(client.name, client.avatar_url, 'titelfoto'),
       titleMenu: h('button', {
         type: 'button', class: 'knop kaal icoonknop klein titelmeer', 'aria-label': `Meer voor ${client.name}`, title: 'Naam wijzigen, dupliceren, archiveren of verwijderen',
         onclick: async (e) => {

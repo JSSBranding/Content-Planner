@@ -1,4 +1,4 @@
-import { h, fill, icon, emptyState, pageHead, page, initials, fmtDateTime } from '../ui.js';
+import { h, fill, icon, emptyState, pageHead, page, avatar, fmtDateTime } from '../ui.js';
 import { api, can, channelLabel } from '../api.js';
 
 // Gearchiveerde klanten: uit de zijbalk, maar met alle gegevens bewaard en altijd terug te zetten.
@@ -12,7 +12,7 @@ export async function archivedView() {
 
   const row = (c) => h('tr', {},
     h('td', {}, h('a', { class: 'klantnaam-cel', href: `#/klant/${c.id}/kalender` },
-      h('span', { class: 'initialen' }, initials(c.name)), h('strong', {}, c.name))),
+      avatar(c.name, c.avatar_url), h('strong', {}, c.name))),
     h('td', { class: 'zacht' }, c.channels.length ? c.channels.map(channelLabel).join(', ') : 'Geen kanalen'),
     h('td', { class: 'zacht' }, `${c.post_count ?? 0} post${c.post_count === 1 ? '' : 's'}`),
     h('td', { class: 'zacht' }, c.archived_at ? fmtDateTime(c.archived_at) : 'Onbekend'),

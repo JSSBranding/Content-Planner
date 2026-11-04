@@ -1,4 +1,4 @@
-import { h, fill, icon, toast, showError, pageHead, page, initials } from '../ui.js';
+import { h, fill, icon, toast, showError, pageHead, page, avatar } from '../ui.js';
 import { api, meta, can } from '../api.js';
 
 // Kanalen en frequentie van alle klanten in één tabel invullen. Elke wijziging wordt direct opgeslagen.
@@ -55,7 +55,7 @@ export async function clientSetupView({ query }) {
     });
     return h('tr', {},
       h('td', {}, h('a', { class: 'klantlink', href: `#/klant/${c.id}/instellingen`, title: 'Klantprofiel openen' },
-        h('span', { class: 'initialen' }, initials(c.name)), c.name)),
+        avatar(c.name, c.avatar_url), c.name)),
       boxes, h('td', {}, ppw), statusCell);
   }
 

@@ -12,7 +12,7 @@ import {
   setSessionCookie, hashPassword, COOKIE, loadPermissions, savePermissions, currentPermissions,
 } from './auth.js';
 import {
-  getClient, mapClient, listMedia, listInputs, listCalendar, getCalendarItem, getPlan, snapshotCalendarItem,
+  getClient, mapClient, avatarUrl, listMedia, listInputs, listCalendar, getCalendarItem, getPlan, snapshotCalendarItem,
 } from './repo.js';
 import { proposePlan, writeTexts, suggestShoots, aiAvailable, AiError, MODEL } from './ai.js';
 import { parseWhatsApp, whatsappToInput } from './whatsapp.js';
@@ -300,8 +300,9 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
   // ---------- Gebruikers ----------
 
   api.get('/users', (req, res) => {
-    const fields = can(req.user, 'manageUsers') ? 'id, name, email, role, disabled, created_at' : 'id, name, role, disabled';
-    res.json(db.prepare(`SELECT ${fields} FROM users ORDER BY disabled, name`).all().map((u) => ({ ...u, disabled: Boolean(u.disabled) })));
+    const fields = can(req.user, 'manageUsers') ? 'id, name, email, role, disabled, avatar_at, created_at' : 'id, name, role, disabled, avatar_at';
+    res.json(db.prepare(`SELECT ${fields} FROM users ORDER BY disabled, name`).all()
+      .map((u) => ({ ...u, disabled: Boolean(u.disabled), avatar_url: avatarUrl('user', u.id, u.avatar_at) })));
   });
 
   api.post('/users', requirePermission('manageUsers'), (req, res) => {
@@ -335,6 +336,62 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     // Nieuw wachtwoord of account uit: overal (behalve hier) opnieuw inloggen.
     if (password || disabled) db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(user.id, req.sessionToken ?? '');
     res.json({ ok: true });
+  });
+
+  // ---------- Profielfoto's ----------
+
+  // Alleen kleine JPG-, PNG- of WebP-foto's, gecontroleerd op de eerste bytes (niet alleen op wat de browser zegt).
+  function parseAvatar(dataUrl) {
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(str(dataUrl, 1_500_000));
+    if (!m) fail(400, 'Kies een foto (JPG, PNG of WebP).');
+    const data = Buffer.from(m[2], 'base64');
+    if (data.length > 800_000) fail(400, 'Deze foto is te groot.');
+    const ok = { 'image/jpeg': data[0] === 0xff && data[1] === 0xd8, 'image/png': data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+      'image/webp': data.subarray(0, 4).toString() === 'RIFF' && data.subarray(8, 12).toString() === 'WEBP' }[m[1]];
+    if (!ok) fail(400, 'Dit bestand is geen geldige foto.');
+    return { mime: m[1], data };
+  }
+  const AVATAR_TABLE = { client: 'clients', user: 'users' };
+  function setAvatar(kind, id, dataUrl) {
+    const { mime, data } = parseAvatar(dataUrl);
+    const at = new Date().toISOString();
+    transaction(db, () => {
+      db.prepare(`INSERT INTO avatars (kind, owner_id, mime, data, updated_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (kind, owner_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at`).run(kind, id, mime, data, at);
+      db.prepare(`UPDATE ${AVATAR_TABLE[kind]} SET avatar_at = ? WHERE id = ?`).run(at, id);
+    });
+    return avatarUrl(kind, id, at);
+  }
+  function clearAvatar(kind, id) {
+    transaction(db, () => {
+      db.prepare('DELETE FROM avatars WHERE kind = ? AND owner_id = ?').run(kind, id);
+      db.prepare(`UPDATE ${AVATAR_TABLE[kind]} SET avatar_at = NULL WHERE id = ?`).run(id);
+    });
+  }
+  // Je eigen foto mag je altijd wijzigen; die van anderen alleen als je het team beheert.
+  const userForAvatar = (req) => {
+    if (req.params.id !== req.user.id && !can(req.user, 'manageUsers')) fail(403, 'Je kunt alleen je eigen profielfoto wijzigen.');
+    return db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id) ?? fail(404, 'Gebruiker niet gevonden.');
+  };
+
+  api.put('/clients/:id/avatar', requirePermission('manageClients'), (req, res) => {
+    const client = clientOr404(req.params.id);
+    res.json({ avatar_url: setAvatar('client', client.id, req.body?.image) });
+  });
+  api.delete('/clients/:id/avatar', requirePermission('manageClients'), (req, res) => {
+    clearAvatar('client', clientOr404(req.params.id).id);
+    res.json({ avatar_url: null });
+  });
+  api.put('/users/:id/avatar', (req, res) => res.json({ avatar_url: setAvatar('user', userForAvatar(req).id, req.body?.image) }));
+  api.delete('/users/:id/avatar', (req, res) => {
+    clearAvatar('user', userForAvatar(req).id);
+    res.json({ avatar_url: null });
+  });
+  api.get('/avatar/:kind/:id', (req, res) => {
+    const row = db.prepare('SELECT mime, data FROM avatars WHERE kind = ? AND owner_id = ?').get(req.params.kind, req.params.id) ?? fail(404, 'Geen foto.');
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    res.set('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.type(row.mime).send(Buffer.from(row.data));
   });
 
   // ---------- Nieuw sinds je laatste bezoek (bolletjes) ----------
@@ -480,6 +537,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     transaction(db, () => {
       // Eerst de kalender: gekoppeld beeld mag pas weg als geen post er meer naar verwijst.
       db.prepare('DELETE FROM calendar_items WHERE client_id = ?').run(client.id);
+      db.prepare("DELETE FROM avatars WHERE kind = 'client' AND owner_id = ?").run(client.id);
       db.prepare('DELETE FROM clients WHERE id = ?').run(client.id);
     });
     fs.rm(path.join(UPLOAD_DIR, client.id), { recursive: true, force: true }, () => {});

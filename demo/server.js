@@ -51,7 +51,7 @@ const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(
 const optTime = (s) => (s ? (isTime(s) ? s : fail(400, `Ongeldig tijdstip: ${s}`)) : null);
 
 const currentUser = () => state.users.find((u) => u.id === state.currentUserId) ?? null;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, disabled: Boolean(u.disabled), created_at: u.created_at });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, disabled: Boolean(u.disabled), avatar_url: u.avatar_url ?? null, created_at: u.created_at });
 
 // Wachtwoorden worden in de demo als SHA-256-hash bewaard, nooit leesbaar.
 export async function hashPassword(password) {
@@ -272,7 +272,7 @@ route('PUT', '/permissions', (_, b) => {
 });
 
 // Gebruikers
-route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role, disabled: Boolean(u.disabled) }))
+route('GET', '/users', () => state.users.map((u) => (can('manageUsers') ? publicUser(u) : { id: u.id, name: u.name, role: u.role, disabled: Boolean(u.disabled), avatar_url: u.avatar_url ?? null }))
   .sort((a, b) => Number(a.disabled) - Number(b.disabled) || a.name.localeCompare(b.name)));
 route('POST', '/users', async (_, b) => {
   need('manageUsers');
@@ -303,6 +303,20 @@ route('PATCH', '/users/:id', async ({ id }, b) => {
   return { ok: true };
 });
 
+// Profielfoto's: in de browserversie als kleine afbeelding (data-URL) bewaard.
+function avatarImage(image) {
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(str(image, 1_500_000))) fail(400, 'Kies een foto (JPG, PNG of WebP).');
+  return image;
+}
+const avatarUser = (id) => {
+  if (id !== currentUser().id && !can('manageUsers')) fail(403, 'Je kunt alleen je eigen profielfoto wijzigen.');
+  return state.users.find((u) => u.id === id) ?? fail(404, 'Gebruiker niet gevonden.');
+};
+route('PUT', '/clients/:id/avatar', ({ id }, b) => { need('manageClients'); const c = clientOr404(id); c.avatar_url = avatarImage(b?.image); return { avatar_url: c.avatar_url }; });
+route('DELETE', '/clients/:id/avatar', ({ id }) => { need('manageClients'); clientOr404(id).avatar_url = null; return { avatar_url: null }; });
+route('PUT', '/users/:id/avatar', ({ id }, b) => { const u = avatarUser(id); u.avatar_url = avatarImage(b?.image); return { avatar_url: u.avatar_url }; });
+route('DELETE', '/users/:id/avatar', ({ id }) => { avatarUser(id).avatar_url = null; return { avatar_url: null }; });
+
 // Nieuw sinds je laatste bezoek (bolletjes)
 const SECTIONS = ['kalender', 'planning', 'media'];
 const seenAt = (clientId, section) => state.seen[`${currentUser().id}|${clientId}|${section}`] ?? currentUser().created_at;
@@ -332,7 +346,7 @@ route('POST', '/clients/:id/duplicate', ({ id }) => {
   const c = clientOr404(id);
   let name = `${c.name} (kopie)`;
   for (let i = 2; nameTaken(name); i++) name = `${c.name} (kopie ${i})`;
-  const copy = { ...structuredClone(c), id: newId(), name, archived: false, created_at: now() };
+  const copy = { ...structuredClone(c), id: newId(), name, archived: false, avatar_url: null, created_at: now() };
   state.clients.push(copy);
   return structuredClone(copy);
 });

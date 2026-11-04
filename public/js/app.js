@@ -1,4 +1,4 @@
-import { h, fill, icon, showError, initials, toast, openMenu, downloadUrl } from './ui.js';
+import { h, fill, icon, showError, toast, openMenu, downloadUrl, avatar, avatarEditor, modal, field } from './ui.js';
 import { api, meta, loadMeta, can, roleLabel } from './api.js';
 import { loginView, setupView } from './views/login.js';
 import { clientsView } from './views/clients.js';
@@ -61,7 +61,7 @@ function sidebar(clients, route) {
         class: `zijlink ${active ? 'actief' : ''}`, href: `#/klant/${c.id}/${tab}`, 'aria-current': active ? 'page' : null, title: c.name,
         ondblclick: (e) => { if (can('manageClients')) { e.preventDefault(); renameInline(c, name); } },
       },
-      h('span', { class: 'initialen' }, initials(c.name)), name,
+      avatar(c.name, c.avatar_url), name,
       hasNews(c) ? h('span', { class: 'nieuw-bol', title: 'Nieuw toegevoegd door een ander account' }) : null,
       waiting ? h('span', { class: 'teller', title: `${waiting} conceptplanning(en) open` }, waiting) : null);
       const more = h('button', {
@@ -106,9 +106,34 @@ function sidebar(clients, route) {
       meta.demo ? null : h('div', { class: `ai-status ${meta.ai.available ? 'aan' : ''}`, title: meta.ai.available ? `Model: ${meta.ai.model}` : 'Op de server is nog geen ANTHROPIC_API_KEY ingesteld.' },
         meta.ai.available ? 'AI actief' : 'AI in voorbeeldmodus'),
       h('div', { class: 'gebruiker' },
-        h('span', { class: 'initialen', style: { width: '28px', height: '28px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgb(255 255 255 / 12%)', fontSize: '11px', fontWeight: '600' } }, initials(roleLabel(meta.user.role))),
-        h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email)),
+        h('button', { type: 'button', class: 'mijnaccount', title: 'Mijn account en profielfoto', onclick: openMyAccount },
+          avatar(roleLabel(meta.user.role), meta.user.avatar_url, 'gebruikerfoto'),
+          h('div', { class: 'wie' }, h('div', {}, roleLabel(meta.user.role)), h('div', { class: 'rol' }, meta.user.email))),
         h('button', { type: 'button', title: 'Uitloggen', 'aria-label': 'Uitloggen', onclick: logout }, icon('uitlog'))))));
+}
+
+// Eigen account: profielfoto wijzigen. Iedereen mag dit voor het eigen account.
+function openMyAccount() {
+  const editor = avatarEditor({
+    name: roleLabel(meta.user.role), url: meta.user.avatar_url,
+    hint: 'Je foto staat linksonder in het menu en bij Team en rechten. Wordt automatisch vierkant bijgesneden.',
+    save: async (image) => {
+      const res = image ? await api.put(`/users/${meta.user.id}/avatar`, { image }) : await api.del(`/users/${meta.user.id}/avatar`);
+      meta.user.avatar_url = res.avatar_url;
+      window.dispatchEvent(new CustomEvent('jcs:zijbalk'));
+      if (location.hash.startsWith('#/gebruikers')) render();
+      return res.avatar_url;
+    },
+  });
+  modal({
+    title: 'Mijn account', width: '520px',
+    body: [
+      h('div', { class: 'veld' }, h('label', {}, 'Profielfoto'), editor),
+      field('Rol', h('input', { type: 'text', value: roleLabel(meta.user.role), disabled: true })),
+      field('E-mailadres', h('input', { type: 'text', value: meta.user.email, disabled: true }), 'Een ander e-mailadres of wachtwoord stelt een Chefkes in onder Team en rechten.'),
+    ],
+    buttons: [{ label: 'Sluiten', class: 'primair', value: true }],
+  });
 }
 
 // Gearchiveerde klanten staan niet in de lijst, maar zijn hier altijd terug te vinden.
@@ -259,6 +284,15 @@ window.addEventListener('jcs:posts-bekeken', (e) => {
   const [path] = (location.hash.slice(1) || '/').split('?');
   const route = match(path);
   if (route) markSeen(route, renderToken, { section: 'kalender', ids: e.detail });
+});
+// Alleen de zijbalk vernieuwen (bijv. na een nieuwe profielfoto), zonder het werkvlak met eventueel half ingevulde velden.
+window.addEventListener('jcs:zijbalk', async () => {
+  const [path] = (location.hash.slice(1) || '/').split('?');
+  const route = match(path) ?? match('/');
+  try {
+    const clients = await api.get('/clients');
+    if (!renaming) root.querySelector('.zijbalk')?.replaceWith(sidebar(clients, route));
+  } catch { /* de volgende weergave haalt het in */ }
 });
 window.addEventListener('jcs:uitgelogd', () => {
   if (!meta.user) return;
