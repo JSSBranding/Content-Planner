@@ -9,7 +9,7 @@ export async function usersView({ rerender }) {
   const users = await api.get('/users');
 
   const role = roleSelect('social_media_manager');
-  const email = h('input', { type: 'email', required: true, placeholder: 'smm@jouwsocialstudio.nl' });
+  const email = h('input', { type: 'email', required: true, placeholder: 'team@jouwsocialstudio.nl' });
   const password = h('input', { type: 'password', required: true, minLength: 10, autocomplete: 'new-password' });
   const form = h('form', {
     class: 'paneelblok',

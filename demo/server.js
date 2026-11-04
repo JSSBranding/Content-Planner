@@ -9,7 +9,7 @@ import { parseWhatsApp, whatsappToInput } from './lib/whatsapp.js';
 import { CHANNELS, CHANNEL_KEYS, CALENDAR_STATUSES, CALENDAR_STATUS_KEYS, PLAN_STATUSES, ROLES, ROLE_KEYS, PERMISSIONS, normalizePermissions } from './lib/constants.js';
 import { buildSeed, demoText } from './seed.js';
 
-const STORE_KEY = 'jcs-demo-v6';
+const STORE_KEY = 'jcs-demo-v7';
 const sessionFiles = new Map(); // video's die alleen tijdens deze sessie bestaan (blob-URL's)
 
 // ---------- Opslag ----------
@@ -19,7 +19,7 @@ let state = load();
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
-    if (saved?.version === 6) return saved;
+    if (saved?.version === 7) return saved;
   } catch { /* geen opslag beschikbaar */ }
   return buildSeed(new Date());
 }

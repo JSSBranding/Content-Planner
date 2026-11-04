@@ -112,8 +112,8 @@ export function buildSeed(today) {
   const PASSWORD_HASH = '1484341c1925a5943dcdb8ebfa475a8e74b7206f7187de6ce6c3cb4b23f124f7';
   const account = (id, name, email, role) => ({ id, name, email, role, created_at: created, password_hash: PASSWORD_HASH, demoAccount: true });
   const users = [
-    account('u-chef', 'Chefkes', 'chefkes@jouwsocialstudio.nl', 'admin'),
-    account('u-lisa', 'Social media manager', 'socialmedia@jouwsocialstudio.nl', 'social_media_manager'),
+    account('u-chef', 'Chefkes', 'info@jouwsocialstudio.nl', 'admin'),
+    account('u-lisa', 'Social media manager', 'team@jouwsocialstudio.nl', 'social_media_manager'),
     account('u-vera', 'Branding', 'branding@jouwsocialstudio.nl', 'vormgever'),
     account('u-sam', 'Stage', 'stage@jouwsocialstudio.nl', 'medewerker'),
   ];
@@ -227,7 +227,7 @@ export function buildSeed(today) {
   });
 
   return {
-    version: 6, currentUserId: null, seen: {}, seenItems: {}, users, permissions: normalizePermissions(CAN),
+    version: 7, currentUserId: null, seen: {}, seenItems: {}, users, permissions: normalizePermissions(CAN),
     clients: [bakkerij, ...realClients],
     inputs, media, calendar, versions: [], plans: [plan], shoots: [],
   };
