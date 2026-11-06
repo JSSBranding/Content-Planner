@@ -2,6 +2,7 @@
 
 export const CHANNELS = [
   { key: 'instagram', label: 'Instagram' },
+  { key: 'instagram_stories', label: 'Instagram Stories' },
   { key: 'facebook', label: 'Facebook' },
   { key: 'linkedin', label: 'LinkedIn' },
   { key: 'tiktok', label: 'TikTok' },

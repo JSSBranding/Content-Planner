@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS client_inputs (
   id           TEXT PRIMARY KEY,
   client_id    TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  source       TEXT NOT NULL CHECK (source IN ('handmatig', 'whatsapp', 'email', 'overig')),
+  source       TEXT NOT NULL CHECK (source IN ('handmatig', 'whatsapp', 'email', 'transcriptie', 'overig')),
   title        TEXT NOT NULL DEFAULT '',
   body         TEXT NOT NULL,
   instructions TEXT NOT NULL DEFAULT '',
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
   id              TEXT PRIMARY KEY,
   client_id       TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   client_input_id TEXT REFERENCES client_inputs(id) ON DELETE SET NULL,
-  kind            TEXT NOT NULL CHECK (kind IN ('foto', 'video')),
+  kind            TEXT NOT NULL CHECK (kind IN ('foto', 'video', 'audio')),
   storage_name    TEXT NOT NULL,
   filename        TEXT NOT NULL,
   mime_type       TEXT NOT NULL,

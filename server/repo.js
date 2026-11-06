@@ -14,6 +14,7 @@ export function mapClient(row) {
     own_days: json.parse(row.own_days, []),
     recurring: json.parse(row.recurring, []),
     archived: Boolean(row.archived),
+    auto_plan: row.auto_plan == null ? true : Boolean(row.auto_plan),
     avatar_url: avatarUrl('client', row.id, row.avatar_at),
   };
 }

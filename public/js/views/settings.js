@@ -17,6 +17,7 @@ export function clientForm({ client, onSaved, onCancel }) {
   const ppw = h('input', { type: 'number', min: 1, max: 21, value: String(c.posts_per_week), disabled: readOnly });
   const memory = h('textarea', { rows: 4, disabled: readOnly, value: c.ai_memory });
   const archived = h('input', { type: 'checkbox', checked: Boolean(c.archived), disabled: readOnly });
+  const autoPlan = h('input', { type: 'checkbox', checked: c.auto_plan !== false, disabled: readOnly });
   const channelBoxes = meta.channels.map((ch) => h('label', {},
     h('input', { type: 'checkbox', value: ch.key, checked: c.channels.includes(ch.key), disabled: readOnly }), ch.label));
   const pillarHelp = 'Eén pijler per regel, bijv. Vakmanschap, Team, Aanbod.';
@@ -33,6 +34,7 @@ export function clientForm({ client, onSaved, onCancel }) {
         posts_per_week: Number(ppw.value),
         ai_memory: memory.value,
         archived: archived.checked,
+        auto_plan: autoPlan.checked,
         context: context.value,
         target_audience: audience.value,
         website: website.value,
@@ -73,7 +75,9 @@ export function clientForm({ client, onSaved, onCancel }) {
       field('Klantnaam', name),
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),
       field('Posts per week', ppw, 'De afgesproken frequentie. De AI plant hier omheen.'),
-      field('Contentpijlers', pillars, pillarHelp)))
+      field('Contentpijlers', pillars, pillarHelp),
+      h('label', { class: 'vinkje', style: { marginTop: '4px' } }, autoPlan, 'Automatisch een conceptplanning maken zodra er nieuwe input binnenkomt'),
+      h('div', { class: 'hulp' }, 'De AI maakt dan direct een voorstel voor de komende vier weken. Een social media manager keurt het nog steeds goed.')))
     : [
       field('Klantnaam', name),
       h('div', { class: 'veld' }, h('label', {}, 'Kanalen'), h('div', { class: 'kanaalkeuze' }, channelBoxes)),

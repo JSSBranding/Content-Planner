@@ -31,7 +31,7 @@ const kindBadge = (m) => (m.kind === 'video' ? h('span', { class: 'soort' }, ico
 
 /** Beeldkiezer: geeft de gekozen media-id's terug (in volgorde van klikken), of null bij annuleren. */
 export async function pickMedia(clientId, { selected = [], title = 'Beeld kiezen' } = {}) {
-  let media = await api.get(`/clients/${clientId}/media`);
+  let media = (await api.get(`/clients/${clientId}/media`)).filter((m) => m.kind !== "audio");
   const chosen = [...selected];
   const grid = h('div', { class: 'beeldlijst' });
   const filters = mediaFilters(() => draw());
@@ -41,7 +41,7 @@ export async function pickMedia(clientId, { selected = [], title = 'Beeld kiezen
       try {
         const ids = await uploadMedia(clientId, e.target.files);
         chosen.push(...ids);
-        media = await api.get(`/clients/${clientId}/media`);
+        media = (await api.get(`/clients/${clientId}/media`)).filter((m) => m.kind !== "audio");
         draw();
       } catch (err) {
         showError(err);

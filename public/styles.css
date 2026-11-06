@@ -732,3 +732,22 @@ table.rapport tfoot td { border-top: 2px solid var(--lijn); font-weight: 600; pa
 @media (max-width: 700px) { .aandachtlijst a { grid-template-columns: 1fr; gap: 4px; } }
 .herhaal-extra { margin-top: 10px; display: grid; gap: 6px; }
 .herhaal-extra .veld { margin-bottom: 0; }
+.audioduim { display:grid; place-items:center; background: var(--vlak); color: var(--tekst-zacht); }
+
+/* ---------- Zijbalk: klokje met meldingen ---------- */
+.zijtop-knoppen { display: flex; align-items: center; gap: 2px; }
+.belknop { all: unset; position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--r); color: #d7d8d8; cursor: pointer; }
+.belknop:hover { background: rgb(255 255 255 / 10%); color: #fff; }
+.belknop:focus-visible { outline: 2px solid var(--turkoois); }
+.belbol { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--fout); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+.belpaneel { position: fixed; z-index: 70; width: min(380px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow-y: auto; background: var(--vlak); border: 1px solid var(--lijn); border-radius: var(--r-groot); box-shadow: var(--schaduw-zwevend); padding: 14px; display: grid; gap: 12px; animation: vervaag .12s ease-out; }
+.belpaneel .overzichtblok { margin: 0; }
+.belpaneel .aandachtlijst a { grid-template-columns: 1fr; gap: 3px; }
+.belleeg { display: grid; justify-items: center; gap: 8px; padding: 18px 8px; color: var(--tekst-zacht); text-align: center; }
+.belleeg .icoon { color: var(--ok); }
+
+/* ---------- Klantinput: opnames ---------- */
+.opnames { display: grid; gap: 8px; margin-top: 10px; }
+.opname { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 10px; }
+.opname .naam { font-size: 12.5px; color: var(--tekst-zacht); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opname audio { grid-column: 1 / -1; width: 100%; height: 34px; }

@@ -37,12 +37,71 @@ const ADDED_COLUMNS = [
   ['seen_items', 'seen_at', 'TEXT'],
   ['calendar_items', 'content_pillar', 'TEXT'],
   ['calendar_items', 'assignee', "TEXT NOT NULL DEFAULT ''"],
+  ['clients', 'auto_plan', 'INTEGER NOT NULL DEFAULT 1'],
+  ['content_plans', 'auto_generated', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 function migrate(db) {
   for (const [table, column, type] of ADDED_COLUMNS) {
     const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
     if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
+  // De lijst met toegestane input-bronnen is uitgebreid met 'transcriptie'. Oude databases hebben nog de
+  // beperktere CHECK-constraint; die herbouwen we eenmalig (SQLite kan een CHECK niet los wijzigen).
+  const inputsSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'client_inputs'").get()?.sql ?? '';
+  if (inputsSql && !inputsSql.includes('transcriptie')) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      ALTER TABLE client_inputs RENAME TO client_inputs_oud;
+      CREATE TABLE client_inputs (
+        id           TEXT PRIMARY KEY,
+        client_id    TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        source       TEXT NOT NULL CHECK (source IN ('handmatig', 'whatsapp', 'email', 'transcriptie', 'overig')),
+        title        TEXT NOT NULL DEFAULT '',
+        body         TEXT NOT NULL,
+        instructions TEXT NOT NULL DEFAULT '',
+        processed    INTEGER NOT NULL DEFAULT 0,
+        created_by   TEXT REFERENCES users(id) ON DELETE SET NULL,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO client_inputs (id, client_id, source, title, body, instructions, processed, created_by, created_at)
+        SELECT id, client_id, source, title, body, instructions, processed, created_by, created_at FROM client_inputs_oud;
+      DROP TABLE client_inputs_oud;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  // media_assets: 'audio' toegevoegd aan de toegestane soorten (voor gespreksopnames). Oude databases herbouwen.
+  const mediaSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'media_assets'").get()?.sql ?? '';
+  if (mediaSql && !mediaSql.includes("'audio'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      ALTER TABLE media_assets RENAME TO media_assets_oud;
+      CREATE TABLE media_assets (
+        id              TEXT PRIMARY KEY,
+        client_id       TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        client_input_id TEXT REFERENCES client_inputs(id) ON DELETE SET NULL,
+        kind            TEXT NOT NULL CHECK (kind IN ('foto', 'video', 'audio')),
+        storage_name    TEXT NOT NULL,
+        filename        TEXT NOT NULL,
+        mime_type       TEXT NOT NULL,
+        size_bytes      INTEGER NOT NULL,
+        description     TEXT NOT NULL DEFAULT '',
+        tags            TEXT NOT NULL DEFAULT '[]',
+        has_recognizable_faces INTEGER,
+        ai_processing_allowed  INTEGER NOT NULL DEFAULT 0,
+        uploaded_by     TEXT REFERENCES users(id) ON DELETE SET NULL,
+        uploaded_at     TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO media_assets SELECT * FROM media_assets_oud;
+      DROP TABLE media_assets_oud;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
   // Pinterest en X worden niet meer gebruikt: uit de kanalen van klanten halen (bestaande posts blijven staan).
   for (const c of db.prepare("SELECT id, channels FROM clients WHERE channels LIKE '%pinterest%' OR channels LIKE '%\"x\"%'").all()) {
     const channels = JSON.parse(c.channels).filter((k) => k !== 'pinterest' && k !== 'x');

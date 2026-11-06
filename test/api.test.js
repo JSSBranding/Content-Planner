@@ -274,7 +274,7 @@ test('rechten per rol aanvinken; chefkes houden teambeheer', async () => {
 
 test('rechten zijn logisch: status voor iedereen, afhankelijke rechten komen mee', async () => {
   const meta = (await admin('GET', '/api/meta')).body;
-  assert.deepEqual(meta.channels.map((c) => c.key), ['instagram', 'facebook', 'linkedin', 'tiktok', 'youtube'], 'geen Pinterest en X');
+  assert.deepEqual(meta.channels.map((c) => c.key), ['instagram', 'instagram_stories', 'facebook', 'linkedin', 'tiktok', 'youtube'], 'geen Pinterest en X');
   const saved = (await admin('PUT', '/api/permissions', {
     permissions: { ...meta.permissions, updateStatus: [], approvePlans: [...meta.permissions.approvePlans, 'medewerker'] },
   })).body.permissions;
@@ -568,4 +568,55 @@ test('post toevoegen met herhalen: bezette dagen overgeslagen, regel bewaard', a
   assert.equal(rule.rhythm, 'week');
   assert.equal(rule.weekday, 1, 'maandag, afgeleid van de eerste datum');
   assert.deepEqual(rule.channels, ['instagram', 'facebook']);
+});
+
+test('Instagram Stories is een kanaal en bruikbaar in een post', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Stories Test', channels: ['instagram', 'instagram_stories'] })).body;
+  assert.deepEqual(c.channels, ['instagram', 'instagram_stories']);
+  const post = await admin('POST', `/api/clients/${c.id}/calendar`, { date: '2027-08-03', channel: 'instagram_stories', body: 'Kijk in onze story 👀' });
+  assert.equal(post.status, 201);
+});
+
+test('opname/transcript als input; audio wordt als kind audio bewaard', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Opname Test', channels: ['instagram'] })).body;
+  const inp = await admin('POST', `/api/clients/${c.id}/inputs`, { source: 'transcriptie', title: 'Belgesprek', body: 'Klant wil nadruk op duurzaamheid en een actie in december.' });
+  assert.equal(inp.status, 201);
+  assert.equal((await admin('GET', `/api/clients/${c.id}/inputs`)).body.find((i) => i.id === inp.body.id).source, 'transcriptie');
+  const form = new FormData();
+  form.append('files', new Blob([Buffer.from('ID3')], { type: 'audio/mpeg' }), 'gesprek.mp3');
+  form.append('client_input_id', inp.body.id);
+  const up = await admin('POST', `/api/clients/${c.id}/media`, null, { form });
+  assert.equal(up.status, 201);
+  const m = (await admin('GET', `/api/clients/${c.id}/media`)).body.find((x) => x.id === up.body.ids[0]);
+  assert.equal(m.kind, 'audio');
+});
+
+test('automatische conceptplanning zodra er input is; respecteert de aan/uit-knop', async () => {
+  const c = (await admin('POST', '/api/clients', { name: 'Auto Test', channels: ['instagram', 'facebook'], posts_per_week: 2 })).body;
+  // Zonder input: niets te doen
+  assert.equal((await admin('POST', `/api/clients/${c.id}/auto-plan`)).body.skipped, 'geen-input');
+  await admin('POST', `/api/clients/${c.id}/inputs`, { body: 'Nieuwe wintercollectie, graag veel sfeerbeeld en een winactie.' });
+  const first = await admin('POST', `/api/clients/${c.id}/auto-plan`);
+  assert.equal(first.status, 200);
+  assert.ok(first.body.plan, 'er is een conceptplanning gemaakt');
+  assert.equal(first.body.plan.status, 'concept');
+  assert.ok(first.body.plan.items.length > 0);
+  const planId = first.body.plan.id;
+  // Tweede input: ververst hetzelfde onaangeroerde concept, geen tweede concept
+  await admin('POST', `/api/clients/${c.id}/inputs`, { body: 'Ook aandacht voor de feestdagen.' });
+  const second = await admin('POST', `/api/clients/${c.id}/auto-plan`);
+  assert.equal(second.body.refreshed, true);
+  assert.equal(second.body.plan.id, planId, 'hetzelfde concept wordt ververst');
+  assert.equal((await admin('GET', `/api/clients/${c.id}/plans`)).body.filter((p) => p.status === 'concept').length, 1);
+  // Uitzetten
+  await admin('PATCH', `/api/clients/${c.id}`, { auto_plan: false });
+  await admin('POST', `/api/clients/${c.id}/inputs`, { body: 'Nog meer input.' });
+  assert.equal((await admin('POST', `/api/clients/${c.id}/auto-plan`)).body.skipped, 'uit');
+  // Stage mag ook input + auto-plan (het blijft een concept dat een manager goedkeurt)
+  const stage = agent();
+  await admin('POST', '/api/users', { role: 'medewerker', email: 'stage-auto@jss.nl', password: 'stage-wachtwoord-9' });
+  await stage('POST', '/api/login', { email: 'stage-auto@jss.nl', password: 'stage-wachtwoord-9' });
+  await admin('PATCH', `/api/clients/${c.id}`, { auto_plan: true });
+  await stage('POST', `/api/clients/${c.id}/inputs`, { body: 'Input van stage.' });
+  assert.ok((await stage('POST', `/api/clients/${c.id}/auto-plan`)).body.plan, 'stage kan auto-concept laten maken');
 });

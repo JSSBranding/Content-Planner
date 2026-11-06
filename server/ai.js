@@ -231,6 +231,7 @@ const CHANNEL_STYLE = {
   linkedin: 'zakelijk en inhoudelijk, 80–200 woorden, weinig emoji, eventueel 3–5 hashtags',
   facebook: 'toegankelijk en persoonlijk, 40–120 woorden, uitnodigend tot reactie',
   instagram: 'korter en beeldend, 30–80 woorden, passende emoji, 5–10 relevante hashtags onderaan',
+  instagram_stories: 'heel kort, 1–2 zinnen of een paar woorden voor over een foto of video in een story; losse, directe toon, mag een vraag of sticker-tekst zijn',
   tiktok: 'heel kort en luchtig, 1–3 zinnen, inspelend op de video',
   youtube: 'beschrijvend, met een eerste zin die de video samenvat',
   pinterest: 'beschrijvend en zoekvriendelijk, 1–3 zinnen',

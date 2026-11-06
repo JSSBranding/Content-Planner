@@ -317,6 +317,9 @@ async function browserDownload(url, filename) {
 
 // Thumbnail van een foto of video uit de mediabibliotheek.
 export function mediaThumb(m, cls = 'duim') {
+  if (m.kind === 'audio') {
+    return h('span', { class: `${cls} audioduim`, title: m.filename }, icon('geluid', { size: 18 }));
+  }
   if (m.kind === 'video') {
     return h('video', { class: `${cls} video`, src: `${m.url}#t=0.5`, preload: 'metadata', muted: true, playsInline: true, title: m.filename });
   }
@@ -324,6 +327,7 @@ export function mediaThumb(m, cls = 'duim') {
 }
 
 export function mediaPreview(m) {
+  if (m.kind === 'audio') return h('audio', { src: m.url, controls: true, preload: 'none', style: { width: '100%' } });
   return m.kind === 'video'
     ? h('video', { src: m.url, controls: true, preload: 'metadata', playsInline: true })
     : h('img', { src: m.url, alt: m.description || m.filename, loading: 'lazy' });

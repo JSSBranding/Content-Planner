@@ -438,13 +438,14 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       ai_memory: str(body.ai_memory ?? current.ai_memory), archived: (body.archived ?? current.archived) ? 1 : 0,
       context: str(body.context ?? current.context), target_audience: str(body.target_audience ?? current.target_audience, 5000),
       website: str(body.website ?? current.website, 300).trim(), contact: str(body.contact ?? current.contact, 500),
+      auto_plan: (body.auto_plan ?? current.auto_plan ?? 1) ? 1 : 0,
       branches: json.str(cleanBranches(body.branches ?? current.branches ?? [], fail)),
       own_days: json.str(cleanOwnDays(body.own_days ?? current.own_days ?? [], fail)),
       recurring: json.str(cleanRecurring(body.recurring ?? current.recurring ?? [], CHANNEL_KEYS, fail)),
     };
   }
   // Branches, eigen dagen en terugkerende posts staan als JSON bij de klant.
-  const saveExtras = (id, f) => db.prepare('UPDATE clients SET branches = ?, own_days = ?, recurring = ? WHERE id = ?').run(f.branches, f.own_days, f.recurring, id);
+  const saveExtras = (id, f) => db.prepare('UPDATE clients SET branches = ?, own_days = ?, recurring = ?, auto_plan = ? WHERE id = ?').run(f.branches, f.own_days, f.recurring, f.auto_plan ?? 1, id);
 
   api.get('/clients', (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -570,7 +571,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     clientOr404(req.params.id);
     const { title, body, instructions, source = 'handmatig' } = req.body ?? {};
     if (!str(body).trim()) fail(400, 'Vul de klantinput in.');
-    if (!['handmatig', 'email', 'overig'].includes(source)) fail(400, 'Onbekende bron.');
+    if (!['handmatig', 'email', 'overig', 'transcriptie'].includes(source)) fail(400, 'Onbekende bron.');
     const id = newId();
     db.prepare('INSERT INTO client_inputs (id, client_id, source, title, body, instructions, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(id, req.params.id, source, str(title, 200).trim(), str(body, 50000).trim(), str(instructions), req.user.id);
@@ -620,7 +621,7 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       filename: (_req, file, cb) => cb(null, `${newId()}${path.extname(utf8Name(file.originalname)).toLowerCase().slice(0, 10)}`),
     }),
     limits: { fileSize: 1024 * 1024 * 1024, files: 50 },
-    fileFilter: (_req, file, cb) => cb(null, /^(image|video)\//.test(file.mimetype)),
+    fileFilter: (_req, file, cb) => cb(null, /^(image|video|audio)\//.test(file.mimetype)),
   });
 
   api.get('/clients/:id/media', (req, res) => {
@@ -633,14 +634,14 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
     next();
   }, mediaUpload.array('files', 50), (req, res) => {
     const files = req.files ?? [];
-    if (!files.length) fail(400, 'Geen foto\'s of video\'s ontvangen. Alleen beeld- en videobestanden zijn toegestaan.');
+    if (!files.length) fail(400, 'Geen bestanden ontvangen. Alleen foto\'s, video\'s en audio-opnames zijn toegestaan.');
     const inputId = req.body?.client_input_id || null;
     if (inputId && !db.prepare('SELECT 1 FROM client_inputs WHERE id = ? AND client_id = ?').get(inputId, req.params.id)) fail(400, 'Onbekende klantinput.');
     const insert = db.prepare(`INSERT INTO media_assets (id, client_id, client_input_id, kind, storage_name, filename, mime_type, size_bytes,
       uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const ids = files.map((f) => {
       const id = newId();
-      insert.run(id, req.params.id, inputId, f.mimetype.startsWith('video/') ? 'video' : 'foto', f.filename, utf8Name(f.originalname),
+      insert.run(id, req.params.id, inputId, f.mimetype.startsWith('video/') ? 'video' : f.mimetype.startsWith('audio/') ? 'audio' : 'foto', f.filename, utf8Name(f.originalname),
         f.mimetype, f.size, req.user.id);
       return id;
     });
@@ -717,6 +718,37 @@ export function createApp(db, { secureCookies = false, trustProxy = false } = {}
       .run(id, client.id, periodStart, periodEnd, proposal.source, proposal.note, str(wishes, 2000), req.user.id);
     const plan = { ...createPlan({ clientId: client.id, items: proposal.items }), id, aiNote: proposal.note, aiSource: proposal.source, wishes: str(wishes, 2000) };
     res.status(201).json(persistPlan(plan));
+  });
+
+  // Automatisch een conceptplanning maken zodra er nieuwe input binnenkomt (opname, transcript, WhatsApp of handmatig).
+  // Nog steeds een concept: een social media manager keurt het goed. Mag door iedereen die input mag toevoegen.
+  const addIso = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  async function makeAutoConcept(client, user) {
+    if (!client.auto_plan) return { skipped: 'uit' };
+    if (!client.channels.length) return { skipped: 'geen-kanalen' };
+    const today = new Date().toISOString().slice(0, 10);
+    const periodStart = addIso(today, 1);
+    const periodEnd = addIso(periodStart, 27); // komende vier weken
+    const ctx = planContext(client, { periodStart, periodEnd });
+    const inputs = ctx.inputs.filter((i) => !i.processed);
+    if (!inputs.length) return { skipped: 'geen-input' };
+    const proposal = await proposePlan({ client, periodStart, periodEnd, inputs, media: ctx.media, occupied: ctx.occupied, wishes: '', recentTopics: recentTopicsOf(client.id) });
+    const note = `${proposal.note} (Automatisch gemaakt op basis van nieuwe klantinput.)`;
+    // Houd hoogstens één open, onaangeroerd auto-concept aan: ververs dat in plaats van er steeds een bij te maken.
+    const open = db.prepare("SELECT id FROM content_plans WHERE client_id = ? AND auto_generated = 1 AND status = 'concept'").all(client.id);
+    const id = open[0]?.id ?? newId();
+    transaction(db, () => {
+      for (const o of open.slice(1)) db.prepare('DELETE FROM content_plans WHERE id = ?').run(o.id);
+      if (open[0]) db.prepare("UPDATE content_plans SET period_start = ?, period_end = ?, ai_source = ?, ai_note = ?, generation = generation + 1 WHERE id = ?").run(periodStart, periodEnd, proposal.source, note, id);
+      else db.prepare('INSERT INTO content_plans (id, client_id, period_start, period_end, ai_source, ai_note, wishes, created_by, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)')
+        .run(id, client.id, periodStart, periodEnd, proposal.source, note, '', user.id);
+    });
+    const plan = { ...createPlan({ clientId: client.id, items: proposal.items }), id, aiNote: note, aiSource: proposal.source, wishes: '' };
+    return { plan: persistPlan(plan), refreshed: Boolean(open[0]) };
+  }
+
+  api.post('/clients/:id/auto-plan', requirePermission('editContent'), async (req, res) => {
+    res.json(await makeAutoConcept(clientOr404(req.params.id), req.user));
   });
 
   function planWithConflicts(plan) {

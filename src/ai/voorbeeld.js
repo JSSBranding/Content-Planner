@@ -1,9 +1,9 @@
 // Voorspelbare voorstellen zonder AI. Gebruikt door de server (zonder API-sleutel) en door de demoversie.
 // Geen afhankelijkheden, zodat dit ook in de browser draait.
 
-const CHANNEL_LABEL = { instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube', pinterest: 'Pinterest', x: 'X' };
+const CHANNEL_LABEL = { instagram: 'Instagram', instagram_stories: 'Instagram Stories', facebook: 'Facebook', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube', pinterest: 'Pinterest', x: 'X' };
 const WEEKDAY_PATTERNS = { 1: [3], 2: [2, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6] };
-export const EXAMPLE_TIMES = { linkedin: '08:30', facebook: '19:30', instagram: '19:00', tiktok: '20:00', youtube: '17:00', pinterest: '20:30', x: '12:00' };
+export const EXAMPLE_TIMES = { linkedin: '08:30', facebook: '19:30', instagram: '19:00', instagram_stories: '12:00', tiktok: '20:00', youtube: '17:00', pinterest: '20:30', x: '12:00' };
 
 export function datesBetween(start, end) {
   const out = [];

@@ -1,7 +1,7 @@
-import { h, fill, icon, showError, toast, openMenu, downloadUrl, avatar, avatarEditor, modal, field } from './ui.js';
+import { h, fill, icon, showError, toast, openMenu, downloadUrl, avatar, avatarEditor, modal, field, page, pageHead, emptyState } from './ui.js';
 import { api, meta, loadMeta, can, roleLabel } from './api.js';
 import { loginView, setupView } from './views/login.js';
-import { clientsView } from './views/clients.js';
+import { newClientView, attentionBlock, mentionsBlock } from './views/clients.js';
 import { calendarView } from './views/calendar.js';
 import { plansView, planView } from './views/plans.js';
 import { mediaView } from './views/media.js';
@@ -16,7 +16,8 @@ const root = document.getElementById('app');
 
 // Routes: #/pad/:param. De eerste die past, wint.
 const routes = [
-  ['/', clientsView, 'overzicht'],
+  ['/', homeView, 'home'],
+  ['/nieuw', newClientView, 'nieuw'],
   ['/gebruikers', usersView, 'gebruikers'],
   ['/inrichten', clientSetupView, 'inrichten'],
   ['/gearchiveerd', archivedView, 'gearchiveerd'],
@@ -44,6 +45,7 @@ function match(path) {
 // ---------- Zijbalk ----------
 
 let clientSearch = '';
+let badges = { attention: { items: [], days: 3 }, mentions: [] };
 let renaming = false; // tijdens hernoemen in de zijbalk wordt die niet vernieuwd
 let menuOpen = false; // op de telefoon klapt de zijbalk in tot een balk met menuknop
 window.addEventListener('hashchange', () => { menuOpen = false; });
@@ -89,19 +91,23 @@ function sidebar(clients, route) {
       toggle.setAttribute('aria-expanded', String(menuOpen));
     },
   }, icon('menu', { size: 22 }));
+  const meldingen = badges.attention.items.length + badges.mentions.length;
+  const bel = h('button', {
+    type: 'button', class: 'belknop', 'aria-label': `Meldingen${meldingen ? ` (${meldingen})` : ''}`, title: 'Aandacht en vermeldingen',
+    onclick: (e) => openBell(e.currentTarget),
+  }, icon('bel', { size: 20 }), meldingen ? h('span', { class: 'belbol', 'aria-hidden': 'true' }, meldingen > 9 ? '9+' : meldingen) : null);
   return fill(aside,
     h('div', { class: 'zijtop' },
       h('a', { class: 'merk', href: '#/' }, h('img', { src: 'assets/brand/svg/beeldmerk-turkoois.svg', alt: '' }), 'Jouw Content Studio'),
-      toggle),
+      h('div', { class: 'zijtop-knoppen' }, bel, toggle)),
     h('div', { class: 'zijinhoud' },
     h('nav', { 'aria-label': 'Hoofdmenu' },
-      h('a', { class: `zijlink ${route.section === 'overzicht' ? 'actief' : ''}`, href: '#/' }, icon('kalender'), h('span', { class: 'naam' }, 'Overzicht')),
       can('manageClients') ? h('a', { class: `zijlink ${route.section === 'inrichten' ? 'actief' : ''}`, href: '#/inrichten' }, icon('profiel'), h('span', { class: 'naam' }, 'Klanten inrichten'),
         clients.some((c) => !c.archived && !c.channels.length) ? h('span', { class: 'teller', title: 'Klanten zonder kanalen' }, clients.filter((c) => !c.archived && !c.channels.length).length) : null) : null,
       can('manageClients') ? h('a', { class: `zijlink ${route.section === 'afspraken' ? 'actief' : ''}`, href: '#/afspraken' }, icon('excel'), h('span', { class: 'naam' }, 'Afspraken')) : null,
       can('manageUsers') ? h('a', { class: `zijlink ${route.section === 'gebruikers' ? 'actief' : ''}`, href: '#/gebruikers' }, icon('gebruikers'), h('span', { class: 'naam' }, 'Team en rechten')) : null),
     h('div', { class: 'kopje' }, 'Klanten',
-      can('manageClients') ? h('a', { href: '#/?nieuw=1', title: 'Nieuwe klant', 'aria-label': 'Nieuwe klant' }, icon('plus', { size: 16 })) : null),
+      can('manageClients') ? h('a', { href: '#/nieuw', title: 'Nieuwe klant', 'aria-label': 'Nieuwe klant' }, icon('plus', { size: 16 })) : null),
     search,
     list,
     archivedLink(clients, route),
@@ -263,6 +269,38 @@ async function logout() {
   render();
 }
 
+// Startpunt: geen aparte Overzicht-pagina meer; je gaat direct naar de eerste klant.
+async function homeView() {
+  const clients = await api.get('/clients');
+  const first = clients.find((c) => !c.archived);
+  if (first) {
+    location.replace(`#/klant/${first.id}/kalender`);
+    return h('div', { class: 'laadvlak' }, h('span', { class: 'laden' }), 'Laden');
+  }
+  return page(pageHead({ title: 'Welkom bij Jouw Content Studio' }),
+    can('manageClients')
+      ? emptyState('Er zijn nog geen klanten. Voeg je eerste klant toe om te beginnen.', h('a', { class: 'knop primair', href: '#/nieuw' }, icon('plus', { size: 16 }), 'Klant toevoegen'))
+      : emptyState('Er zijn nog geen klanten ingericht. Een social media manager voegt ze toe.'));
+}
+
+// Het klokje in de zijbalk: wat binnenkort online gaat zonder tekst of beeld, en reacties waarin je bent genoemd.
+function openBell(anchor) {
+  document.querySelector('.belpaneel')?.remove();
+  const close = () => { paneel.remove(); document.removeEventListener('pointerdown', buiten, true); document.removeEventListener('keydown', opEsc, true); };
+  const buiten = (e) => { if (!paneel.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) close(); };
+  const opEsc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const leeg = !badges.attention.items.length && !badges.mentions.length;
+  const paneel = h('div', { class: 'belpaneel', role: 'dialog', 'aria-label': 'Meldingen', onclick: (e) => { if (e.target.closest('a')) close(); } },
+    leeg ? h('div', { class: 'belleeg' }, icon('vink', { size: 20 }), h('p', {}, 'Niets dat nu aandacht vraagt.'))
+      : [attentionBlock(badges.attention), mentionsBlock(badges.mentions)]);
+  document.body.append(paneel);
+  const r = anchor.getBoundingClientRect();
+  paneel.style.top = `${r.bottom + 8}px`;
+  paneel.style.left = `${Math.max(12, Math.min(r.left, innerWidth - paneel.offsetWidth - 12))}px`;
+  document.addEventListener('pointerdown', buiten, true);
+  document.addEventListener('keydown', opEsc, true);
+}
+
 // ---------- Weergeven ----------
 
 let renderToken = 0;
@@ -280,15 +318,18 @@ export async function render() {
   else root.querySelector('.werkvlak').replaceWith(main);
 
   try {
-    const [clients, content] = await Promise.all([
+    const [clients, content, aandacht, vermeld] = await Promise.all([
       api.get('/clients'),
       route.view({ ...route.params, query: new URLSearchParams(query), tab: route.tab, rerender: render }),
+      api.get('/aandacht').catch(() => ({ items: [], days: 3 })),
+      api.get('/vermeldingen').catch(() => []),
     ]);
     if (token !== renderToken) return;
+    badges = { attention: aandacht, mentions: vermeld };
     if (!renaming) root.querySelector('.zijbalk').replaceWith(sidebar(clients, route));
     fill(main, content);
     markSeen(route, token);
-    document.title = `${main.querySelector('h1')?.textContent ?? 'Overzicht'} | Jouw Content Studio`;
+    document.title = `${main.querySelector('h1')?.textContent ?? 'Klanten'} | Jouw Content Studio`;
   } catch (err) {
     if (token !== renderToken) return;
     fill(main, h('div', { class: 'inhoud-vlak' }, h('div', { class: 'melding fout' }, icon('sluit'), err.message)));
